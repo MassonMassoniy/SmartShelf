@@ -1,101 +1,96 @@
 /*
-  I2C Bus Scanner — XIAO ESP32-S3
-  Scans all 127 addresses and prints which ones respond.
-  SGP41 should appear at 0x59.
+  ESP32-S3: Get time via NTP and POST date to Raspberry Pi HTTP endpoint
+  Replace `YOUR_SSID`, `YOUR_PASSWORD` and `RASPBERRY_PI_IP` before uploading.
 */
 
 #include <Arduino.h>
-#include <Wire.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <time.h>
 
-static const int PIN_SDA = 5;  // D4
-static const int PIN_SCL = 6;  // D5
+// --- Configure these ---
+const char* ssid = "YOUR_SSID";
+const char* password = "YOUR_PASSWORD";
+const char* serverUrl = "http://RASPBERRY_PI_IP:5000/date"; // e.g. http://192.168.1.42:5000/date
+// -----------------------
 
-static void printBootBanner() {
-    Serial.println(F("\n[boot] I2C scanner starting..."));
-    Serial.println(F("[boot] Waiting for serial monitor + scanning I2C"));
+// timezone config: seconds east of UTC and minutes of DST -> keep 0 for UTC here
+const long gmtOffset_sec = 0;
+const int daylightOffset_sec = 0;
+
+String iso8601(struct tm *tm) {
+  char buf[40];
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", tm);
+  return String(buf);
 }
 
-static void scanI2CBus() {
-    Serial.println(F("\n=== I2C Scanner ==="));
-    Serial.print(F("SDA: GPIO")); Serial.print(PIN_SDA);
-    Serial.print(F("  SCL: GPIO")); Serial.println(PIN_SCL);
-    Serial.println(F("Scanning 0x01..0x7E"));
-    Serial.println();
-
-    uint8_t found = 0;
-    for (uint8_t addr = 1; addr < 127; addr++) {
-        // Progress marker so hangs are visible in monitor.
-        if ((addr % 16) == 1) {
-            Serial.print(F("  0x"));
-            if (addr < 0x10) Serial.print('0');
-            Serial.print(addr, HEX);
-            Serial.print(F(": "));
-        }
-
-        Wire.beginTransmission(addr);
-        uint8_t err = Wire.endTransmission();
-        if (err == 0) {
-            Serial.print(F("  Device found at 0x"));
-            if (addr < 0x10) Serial.print('0');
-            Serial.print(addr, HEX);
-            if (addr == 0x59) Serial.print(F("  <-- SGP41"));
-            Serial.println();
-            found++;
-        } else if (err == 4) {
-            Serial.print(F("  Unknown error at 0x"));
-            if (addr < 0x10) Serial.print('0');
-            Serial.println(addr, HEX);
-        } else {
-            Serial.print('.');
-        }
-
-        if ((addr % 16) == 0 || addr == 126) Serial.println();
-        delay(1);
-    }
-
-    if (found == 0) {
-        Serial.println(F("  No devices found."));
-        Serial.println(F("  Check: power, GND, SDA/SCL not swapped, pull-ups present."));
-    } else {
-        Serial.print(F("\n  Total devices found: "));
-        Serial.println(found);
-    }
-    Serial.println(F("\n=== Scan complete ==="));
+void connectWiFi() {
+  Serial.printf("Connecting to %s", ssid);
+  WiFi.begin(ssid, password);
+  int tries = 0;
+  while (WiFi.status() != WL_CONNECTED && tries < 40) {
+    delay(500);
+    Serial.print('.');
+    tries++;
+  }
+  Serial.println();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("WiFi connected, IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("WiFi connection failed");
+  }
 }
 
 void setup() {
-    Serial.begin(115200);
-    unsigned long serial_wait_start = millis();
-    while (!Serial && (millis() - serial_wait_start) < 2000) {
-        delay(10);
-    }
-    delay(10000); // small settle for host serial monitor  // allow USB stack to come up
+  Serial.begin(115200);
+  delay(100);
+  connectWiFi();
 
-    // Give monitor a chance to attach on native USB boards.
-    const uint32_t serialWaitStart = millis();
-    while (!Serial && (millis() - serialWaitStart) < 5000) {
-        delay(10);
-    }
-    for (uint8_t i = 0; i < 3; i++) {
-        printBootBanner();
-        delay(80);
-    }
-
-    Wire.begin(PIN_SDA, PIN_SCL);
-    Wire.setClock(100000);  // 100 kHz for diagnostics/stability
-    Wire.setTimeOut(20);    // prevent indefinite block on bus issues
-
-    scanI2CBus();
+  // configure NTP
+  configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
+  Serial.println("Waiting for time sync...");
+  struct tm timeinfo;
+  int waitCount = 0;
+  while (!getLocalTime(&timeinfo) && waitCount < 20) {
+    delay(500);
+    Serial.print('.');
+    waitCount++;
+  }
+  Serial.println();
+  if (getLocalTime(&timeinfo)) {
+    Serial.println("Time synchronized");
+  } else {
+    Serial.println("Failed to sync time (still continuing) ");
+  }
 }
 
 void loop() {
-    static uint32_t lastScanMs = 0;
-    const uint32_t now = millis();
-    if (now - lastScanMs >= 5000) {
-        lastScanMs = now;
-        Serial.print(F("\n[alive] ms="));
-        Serial.println(now);
-        Serial.println(F("Re-scanning..."));
-        scanI2CBus();
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("No time available");
+  } else {
+    String date = iso8601(&timeinfo);
+    Serial.println("Sending date: " + date);
+
+    if (WiFi.status() == WL_CONNECTED) {
+      HTTPClient http;
+      http.begin(serverUrl);
+      http.addHeader("Content-Type", "application/json");
+      String payload = "{ \"date\": \"" + date + "\" }";
+      int httpCode = http.POST(payload);
+      if (httpCode > 0) {
+        Serial.printf("POST response: %d\n", httpCode);
+      } else {
+        Serial.printf("POST failed, error: %s\n", http.errorToString(httpCode).c_str());
+      }
+      http.end();
+    } else {
+      Serial.println("WiFi not connected, reconnecting...");
+      connectWiFi();
     }
+  }
+
+  // send once per minute; adjust as needed
+  delay(60000);
 }
