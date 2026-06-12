@@ -23,7 +23,7 @@ static void scanI2CBus() {
     Serial.println();
 
     uint8_t found = 0;
-    for (uint8_t addr = 1; addr < 127; addr++) {
+    for (uint8_t addr = 0x44; addr < 0x6A; addr++) {
         // Progress marker so hangs are visible in monitor.
         if ((addr % 16) == 1) {
             Serial.print(F("  0x"));
