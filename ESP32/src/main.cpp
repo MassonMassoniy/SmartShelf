@@ -50,6 +50,7 @@ volatile bool vcnlIntPending = false;
 volatile uint32_t vcnlIntCount = 0;
 uint16_t packetSequence = 0;
 uint16_t nodeId = 0;
+uint64_t mac = 0;
 char nodeName[20] = {};
 BLEAdvertising* bleAdvertising = nullptr;
 
@@ -276,7 +277,7 @@ bool initSgp41() {
 }
 
 uint16_t computeNodeIdFromMac() {
-    const uint64_t mac = ESP.getEfuseMac();
+    mac = ESP.getEfuseMac();
     return static_cast<uint16_t>(mac & 0xFFFF);
 }
 
@@ -467,6 +468,8 @@ void loop() {
 
     Serial.print(F("[BLE TX] node="));
     Serial.print(nodeId);
+    Serial.print(F(" mac="));
+    Serial.print(mac, HEX);
     Serial.print(F(" seq="));
     Serial.print(static_cast<uint16_t>(packetSequence - 1));
     Serial.print(F(" flags=0x"));
