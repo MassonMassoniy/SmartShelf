@@ -8,6 +8,7 @@ namespace {
 
 constexpr uint8_t PIN_SDA = 5;   // XIAO ESP32-S3 D4
 constexpr uint8_t PIN_SCL = 6;   // XIAO ESP32-S3 D5
+constexpr uint8_t PIN_VCNL4040_INT = 9;  // XIAO ESP32-S3 D2
 constexpr uint32_t LOOP_PERIOD_MS = 100;
 constexpr uint32_t SGP41_CONDITIONING_S = 10;
 
@@ -21,7 +22,10 @@ constexpr uint8_t REG_VCNL4040_PS_CONF3MS = 0x04;
 constexpr uint8_t REG_VCNL4040_PS_DATA = 0x08;
 constexpr uint8_t REG_VCNL4040_ALS_DATA = 0x09;
 constexpr uint8_t REG_VCNL4040_WHITE_DATA = 0x0A;
+constexpr uint8_t REG_VCNL4040_INT_FLAG = 0x0B;
 constexpr uint8_t REG_VCNL4040_ID = 0x0C;
+constexpr uint8_t REG_VCNL4040_PS_THDL = 0x06;
+constexpr uint8_t REG_VCNL4040_PS_THDH = 0x07;
 
 constexpr uint8_t CMD_SHT45_MEASURE_HIGH_PREC = 0xFD;
 
@@ -36,6 +40,16 @@ bool sht45Ok = false;
 bool vcnl4040Ok = false;
 bool sgp41Ok = false;
 bool sgp41ConditioningDone = false;
+volatile bool vcnlIntPending = false;
+volatile uint32_t vcnlIntCount = 0;
+
+constexpr uint16_t VCNL4040_PS_LOW_THRESHOLD = 1200;
+constexpr uint16_t VCNL4040_PS_HIGH_THRESHOLD = 2000;
+
+void IRAM_ATTR onVcnl4040Interrupt() {
+    vcnlIntPending = true;
+    ++vcnlIntCount;
+}
 
 uint8_t crc8(const uint8_t* data, uint8_t len) {
     uint8_t crc = 0xFF;
@@ -134,6 +148,8 @@ void printHeader() {
     Serial.print(F(" SCL=GPIO"));
     Serial.println(PIN_SCL);
     Serial.println(F("Sensors: SHT45 + VCNL4040 + SGP41"));
+    Serial.print(F("VCNL4040 INT pin: GPIO"));
+    Serial.println(PIN_VCNL4040_INT);
 }
 
 bool initSht45() {
@@ -166,8 +182,11 @@ bool initVcnl4040() {
     // Bring ALS/PS blocks out of shutdown using baseline configuration.
     bool ok = true;
     ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_ALS_CONF, 0x0000);
-    ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_CONF12, 0x0000);
+    // PS_INT bits[9:8] = 0b11 => trigger on both close and away.
+    ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_CONF12, 0x0300);
     ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_CONF3MS, 0x0000);
+    ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_THDL, VCNL4040_PS_LOW_THRESHOLD);
+    ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_THDH, VCNL4040_PS_HIGH_THRESHOLD);
     if (!ok) {
         Serial.println(F("[VCNL4040] Configuration write failed"));
         return false;
@@ -192,7 +211,11 @@ bool initVcnl4040() {
     Serial.print(F("  ALS="));
     Serial.print(als);
     Serial.print(F("  White="));
-    Serial.println(white);
+    Serial.print(white);
+    Serial.print(F("  TH(low/high)="));
+    Serial.print(VCNL4040_PS_LOW_THRESHOLD);
+    Serial.print('/');
+    Serial.println(VCNL4040_PS_HIGH_THRESHOLD);
     return true;
 }
 
@@ -245,6 +268,14 @@ void setup() {
     vcnl4040Ok = initVcnl4040();
     sgp41Ok = initSgp41();
 
+    if (vcnl4040Ok) {
+        pinMode(PIN_VCNL4040_INT, INPUT_PULLUP);
+        attachInterrupt(digitalPinToInterrupt(PIN_VCNL4040_INT), onVcnl4040Interrupt, FALLING);
+        uint16_t dummyFlags = 0;
+        readRegister16(ADDR_VCNL4040, REG_VCNL4040_INT_FLAG, dummyFlags);  // clear stale flags
+        Serial.println(F("[VCNL4040] Interrupt enabled (FALLING edge on INT pin)"));
+    }
+
     setupMs = millis();
     lastLoopMs = setupMs - LOOP_PERIOD_MS;
 
@@ -272,18 +303,34 @@ void loop() {
     bool shtReadOk = false;
     bool vcnlReadOk = false;
     bool sgpReadOk = false;
+    bool intEvent = false;
+    uint32_t intCountSnapshot = 0;
+    uint16_t intFlagsRaw = 0;
+    bool intFlagsOk = false;
 
     if (sht45Ok) {
         shtReadOk = readSht45(temperatureC, humidityRh);
     }
 
     if (vcnl4040Ok) {
+        noInterrupts();
+        intEvent = vcnlIntPending;
+        if (intEvent) {
+            vcnlIntPending = false;
+        }
+        intCountSnapshot = vcnlIntCount;
+        interrupts();
+
         const bool proxOk = readRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_DATA, prox);
         const bool alsOk = readRegister16(ADDR_VCNL4040, REG_VCNL4040_ALS_DATA, als);
         const bool whiteOk = readRegister16(ADDR_VCNL4040, REG_VCNL4040_WHITE_DATA, white);
         vcnlReadOk = proxOk && alsOk && whiteOk;
         if (vcnlReadOk) {
             lux = static_cast<float>(als) * 0.1f;  // typical VCNL4040 conversion
+        }
+
+        if (intEvent) {
+            intFlagsOk = readRegister16(ADDR_VCNL4040, REG_VCNL4040_INT_FLAG, intFlagsRaw);
         }
     }
 
@@ -336,6 +383,34 @@ void loop() {
         Serial.print(white);
         Serial.print(F(", Lux~"));
         Serial.println(lux, 2);
+        if (intEvent) {
+            Serial.print(F("  VCNL4040 INT: count="));
+            Serial.print(intCountSnapshot);
+            if (intFlagsOk) {
+                const bool closeEvent = ((intFlagsRaw >> 9) & 0x1) != 0;
+                const bool awayEvent = ((intFlagsRaw >> 8) & 0x1) != 0;
+                Serial.print(F(" flags=0x"));
+                Serial.print(intFlagsRaw, HEX);
+                Serial.print(F(" [close="));
+                Serial.print(closeEvent ? F("1") : F("0"));
+                Serial.print(F(", away="));
+                Serial.print(awayEvent ? F("1") : F("0"));
+                Serial.println(']');
+
+                Serial.print(F("  VCNL4040 INT EVENT: "));
+                if (closeEvent && awayEvent) {
+                    Serial.println(F("CLOSE+AWAY"));
+                } else if (closeEvent) {
+                    Serial.println(F("CLOSE"));
+                } else if (awayEvent) {
+                    Serial.println(F("AWAY"));
+                } else {
+                    Serial.println(F("NO_FLAG_SET"));
+                }
+            } else {
+                Serial.println(F(" flags read failed"));
+            }
+        }
     } else {
         Serial.println(F("read failed"));
     }

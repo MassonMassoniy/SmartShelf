@@ -3,13 +3,20 @@
 #include <SensirionI2CSgp41.h>
 #include <VOCGasIndexAlgorithm.h>
 #include <NOxGasIndexAlgorithm.h>
+#include <BLEDevice.h>
+#include <cstring>
+#include <string>
 
 namespace {
 
 constexpr uint8_t PIN_SDA = 5;   // XIAO ESP32-S3 D4
 constexpr uint8_t PIN_SCL = 6;   // XIAO ESP32-S3 D5
-constexpr uint32_t LOOP_PERIOD_MS = 3000;
+constexpr uint8_t PIN_VCNL4040_INT = 9;  // XIAO ESP32-S3 D2
+constexpr uint32_t LOOP_PERIOD_MS = 1000;
 constexpr uint32_t SGP41_CONDITIONING_S = 10;
+constexpr uint16_t BLE_COMPANY_ID = 0xFFFF;  // Replace with your own company ID if available.
+constexpr uint16_t BLE_ADV_MIN_INTERVAL_UNITS = 320;  // 200 ms
+constexpr uint16_t BLE_ADV_MAX_INTERVAL_UNITS = 480;  // 300 ms
 
 constexpr uint8_t ADDR_SHT45 = 0x44;
 constexpr uint8_t ADDR_VCNL4040 = 0x60;
@@ -21,7 +28,10 @@ constexpr uint8_t REG_VCNL4040_PS_CONF3MS = 0x04;
 constexpr uint8_t REG_VCNL4040_PS_DATA = 0x08;
 constexpr uint8_t REG_VCNL4040_ALS_DATA = 0x09;
 constexpr uint8_t REG_VCNL4040_WHITE_DATA = 0x0A;
+constexpr uint8_t REG_VCNL4040_INT_FLAG = 0x0B;
 constexpr uint8_t REG_VCNL4040_ID = 0x0C;
+constexpr uint8_t REG_VCNL4040_PS_THDL = 0x06;
+constexpr uint8_t REG_VCNL4040_PS_THDH = 0x07;
 
 constexpr uint8_t CMD_SHT45_MEASURE_HIGH_PREC = 0xFD;
 
@@ -36,6 +46,33 @@ bool sht45Ok = false;
 bool vcnl4040Ok = false;
 bool sgp41Ok = false;
 bool sgp41ConditioningDone = false;
+volatile bool vcnlIntPending = false;
+volatile uint32_t vcnlIntCount = 0;
+uint16_t packetSequence = 0;
+uint16_t nodeId = 0;
+char nodeName[20] = {};
+BLEAdvertising* bleAdvertising = nullptr;
+
+constexpr uint16_t VCNL4040_PS_LOW_THRESHOLD = 1200;
+constexpr uint16_t VCNL4040_PS_HIGH_THRESHOLD = 2000;
+
+struct __attribute__((packed)) SensorBlePayload {
+    uint8_t protocolVersion;
+    uint16_t nodeId;
+    uint8_t flags;               // bit0 SHT45, bit1 VCNL4040, bit2 SGP41
+    int16_t temperatureCenti;    // deg C * 100
+    uint16_t humidityCenti;      // %RH * 100
+    uint16_t proximityRaw;
+    uint16_t ambientLightRaw;
+    int16_t vocIndex;
+    int16_t noxIndex;
+    uint16_t sequence;
+};
+
+void IRAM_ATTR onVcnl4040Interrupt() {
+    vcnlIntPending = true;
+    ++vcnlIntCount;
+}
 
 uint8_t crc8(const uint8_t* data, uint8_t len) {
     uint8_t crc = 0xFF;
@@ -134,6 +171,8 @@ void printHeader() {
     Serial.print(F(" SCL=GPIO"));
     Serial.println(PIN_SCL);
     Serial.println(F("Sensors: SHT45 + VCNL4040 + SGP41"));
+    Serial.print(F("VCNL4040 INT pin: GPIO"));
+    Serial.println(PIN_VCNL4040_INT);
 }
 
 bool initSht45() {
@@ -166,8 +205,11 @@ bool initVcnl4040() {
     // Bring ALS/PS blocks out of shutdown using baseline configuration.
     bool ok = true;
     ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_ALS_CONF, 0x0000);
-    ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_CONF12, 0x0000);
+    // PS_INT bits[9:8] = 0b11 => trigger on both close and away.
+    ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_CONF12, 0x0300);
     ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_CONF3MS, 0x0000);
+    ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_THDL, VCNL4040_PS_LOW_THRESHOLD);
+    ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_THDH, VCNL4040_PS_HIGH_THRESHOLD);
     if (!ok) {
         Serial.println(F("[VCNL4040] Configuration write failed"));
         return false;
@@ -192,7 +234,11 @@ bool initVcnl4040() {
     Serial.print(F("  ALS="));
     Serial.print(als);
     Serial.print(F("  White="));
-    Serial.println(white);
+    Serial.print(white);
+    Serial.print(F("  TH(low/high)="));
+    Serial.print(VCNL4040_PS_LOW_THRESHOLD);
+    Serial.print('/');
+    Serial.println(VCNL4040_PS_HIGH_THRESHOLD);
     return true;
 }
 
@@ -229,6 +275,77 @@ bool initSgp41() {
     return true;
 }
 
+uint16_t computeNodeIdFromMac() {
+    const uint64_t mac = ESP.getEfuseMac();
+    return static_cast<uint16_t>(mac & 0xFFFF);
+}
+
+void buildNodeName(char* outName, size_t outLen) {
+    const uint64_t mac = ESP.getEfuseMac();
+    const uint32_t macTail = static_cast<uint32_t>(mac & 0xFFFFFF);
+    snprintf(outName, outLen, "SmartShelf-%06lX", static_cast<unsigned long>(macTail));
+}
+
+void initBleTransport() {
+    nodeId = computeNodeIdFromMac();
+    buildNodeName(nodeName, sizeof(nodeName));
+
+    BLEDevice::init(nodeName);
+    bleAdvertising = BLEDevice::getAdvertising();
+    bleAdvertising->setScanResponse(false);
+    bleAdvertising->setMinInterval(BLE_ADV_MIN_INTERVAL_UNITS);
+    bleAdvertising->setMaxInterval(BLE_ADV_MAX_INTERVAL_UNITS);
+
+    Serial.print(F("[BLE] Device name: "));
+    Serial.println(nodeName);
+    Serial.print(F("[BLE] Node ID: "));
+    Serial.println(nodeId);
+}
+
+void publishBlePacket(
+    bool shtReadOk,
+    bool vcnlReadOk,
+    bool sgpReadOk,
+    float temperatureC,
+    float humidityRh,
+    uint16_t prox,
+    uint16_t als,
+    int32_t vocIndex,
+    int32_t noxIndex
+) {
+    if (bleAdvertising == nullptr) {
+        return;
+    }
+
+    SensorBlePayload payload{};
+    payload.protocolVersion = 1;
+    payload.nodeId = nodeId;
+    payload.flags =
+        (shtReadOk ? 0x01 : 0x00) |
+        (vcnlReadOk ? 0x02 : 0x00) |
+        (sgpReadOk ? 0x04 : 0x00);
+    payload.temperatureCenti = shtReadOk ? static_cast<int16_t>(temperatureC * 100.0f) : INT16_MIN;
+    payload.humidityCenti = shtReadOk ? static_cast<uint16_t>(humidityRh * 100.0f) : 0;
+    payload.proximityRaw = vcnlReadOk ? prox : 0;
+    payload.ambientLightRaw = vcnlReadOk ? als : 0;
+    payload.vocIndex = sgpReadOk ? static_cast<int16_t>(vocIndex) : -1;
+    payload.noxIndex = sgpReadOk ? static_cast<int16_t>(noxIndex) : -1;
+    payload.sequence = packetSequence++;
+
+    uint8_t packet[2 + sizeof(SensorBlePayload)] = {};
+    packet[0] = static_cast<uint8_t>(BLE_COMPANY_ID & 0xFF);
+    packet[1] = static_cast<uint8_t>((BLE_COMPANY_ID >> 8) & 0xFF);
+    memcpy(packet + 2, &payload, sizeof(payload));
+
+    BLEAdvertisementData advData;
+    advData.setFlags(0x06);
+    advData.setManufacturerData(std::string(reinterpret_cast<char*>(packet), sizeof(packet)));
+
+    bleAdvertising->stop();
+    bleAdvertising->setAdvertisementData(advData);
+    bleAdvertising->start();
+}
+
 }  // namespace
 
 void setup() {
@@ -245,10 +362,19 @@ void setup() {
     vcnl4040Ok = initVcnl4040();
     sgp41Ok = initSgp41();
 
+    if (vcnl4040Ok) {
+        pinMode(PIN_VCNL4040_INT, INPUT_PULLUP);
+        attachInterrupt(digitalPinToInterrupt(PIN_VCNL4040_INT), onVcnl4040Interrupt, FALLING);
+        uint16_t dummyFlags = 0;
+        readRegister16(ADDR_VCNL4040, REG_VCNL4040_INT_FLAG, dummyFlags);  // clear stale flags
+        Serial.println(F("[VCNL4040] Interrupt enabled (FALLING edge on INT pin)"));
+    }
+
     setupMs = millis();
     lastLoopMs = setupMs - LOOP_PERIOD_MS;
+    initBleTransport();
 
-    Serial.println(F("\n--- Loop output every 3 seconds ---"));
+    Serial.println(F("\n--- BLE packet update every 1 second ---"));
 }
 
 void loop() {
@@ -272,18 +398,34 @@ void loop() {
     bool shtReadOk = false;
     bool vcnlReadOk = false;
     bool sgpReadOk = false;
+    bool intEvent = false;
+    uint32_t intCountSnapshot = 0;
+    uint16_t intFlagsRaw = 0;
+    bool intFlagsOk = false;
 
     if (sht45Ok) {
         shtReadOk = readSht45(temperatureC, humidityRh);
     }
 
     if (vcnl4040Ok) {
+        noInterrupts();
+        intEvent = vcnlIntPending;
+        if (intEvent) {
+            vcnlIntPending = false;
+        }
+        intCountSnapshot = vcnlIntCount;
+        interrupts();
+
         const bool proxOk = readRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_DATA, prox);
         const bool alsOk = readRegister16(ADDR_VCNL4040, REG_VCNL4040_ALS_DATA, als);
         const bool whiteOk = readRegister16(ADDR_VCNL4040, REG_VCNL4040_WHITE_DATA, white);
         vcnlReadOk = proxOk && alsOk && whiteOk;
         if (vcnlReadOk) {
             lux = static_cast<float>(als) * 0.1f;  // typical VCNL4040 conversion
+        }
+
+        if (intEvent) {
+            intFlagsOk = readRegister16(ADDR_VCNL4040, REG_VCNL4040_INT_FLAG, intFlagsRaw);
         }
     }
 
@@ -311,53 +453,53 @@ void loop() {
         }
     }
 
-    Serial.print(F("[ms="));
-    Serial.print(now);
-    Serial.println(F("]"));
+    publishBlePacket(
+        shtReadOk,
+        vcnlReadOk,
+        sgpReadOk,
+        temperatureC,
+        humidityRh,
+        prox,
+        als,
+        vocIndex,
+        noxIndex
+    );
 
-    Serial.print(F("SHT45: "));
+    Serial.print(F("[BLE TX] node="));
+    Serial.print(nodeId);
+    Serial.print(F(" seq="));
+    Serial.print(static_cast<uint16_t>(packetSequence - 1));
+    Serial.print(F(" flags=0x"));
+    uint8_t flags =
+        (shtReadOk ? 0x01 : 0x00) |
+        (vcnlReadOk ? 0x02 : 0x00) |
+        (sgpReadOk ? 0x04 : 0x00);
+    Serial.print(flags, HEX);
     if (shtReadOk) {
-        Serial.print(F("T="));
+        Serial.print(F(" T="));
         Serial.print(temperatureC, 2);
-        Serial.print(F(" C, RH="));
+        Serial.print(F(" RH="));
         Serial.print(humidityRh, 2);
-        Serial.println(F(" %"));
-    } else {
-        Serial.println(F("read failed"));
     }
-
-    Serial.print(F("VCNL4040: "));
     if (vcnlReadOk) {
-        Serial.print(F("Prox="));
+        Serial.print(F(" Prox="));
         Serial.print(prox);
-        Serial.print(F(", ALS="));
+        Serial.print(F(" ALS="));
         Serial.print(als);
-        Serial.print(F(", White="));
-        Serial.print(white);
-        Serial.print(F(", Lux~"));
-        Serial.println(lux, 2);
-    } else {
-        Serial.println(F("read failed"));
     }
-
-    Serial.print(F("SGP41: "));
-    if (sgpReadOk) {
-        if (!sgp41ConditioningDone && (now - setupMs) < (SGP41_CONDITIONING_S * 1000UL)) {
-            Serial.print(F("conditioning, srawVOC="));
-            Serial.println(srawVoc);
-        } else {
-            Serial.print(F("srawVOC="));
-            Serial.print(srawVoc);
-            Serial.print(F(", srawNOx="));
-            Serial.print(srawNox);
-            Serial.print(F(", VOC index="));
-            Serial.print(vocIndex);
-            Serial.print(F(", NOx index="));
-            Serial.println(noxIndex);
+    if (sgpReadOk && sgp41ConditioningDone) {
+        Serial.print(F(" VOC="));
+        Serial.print(vocIndex);
+        Serial.print(F(" NOx="));
+        Serial.print(noxIndex);
+    }
+    if (intEvent) {
+        Serial.print(F(" INT#="));
+        Serial.print(intCountSnapshot);
+        if (intFlagsOk) {
+            Serial.print(F(" IF=0x"));
+            Serial.print(intFlagsRaw, HEX);
         }
-    } else {
-        Serial.println(F("read failed"));
     }
-
     Serial.println();
 }
