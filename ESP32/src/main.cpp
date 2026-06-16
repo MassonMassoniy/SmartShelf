@@ -277,8 +277,23 @@ bool initSgp41() {
 }
 
 uint16_t computeNodeIdFromMac() {
-    mac = ESP.getEfuseMac();
-    return static_cast<uint16_t>(mac & 0xFFFF);
+    // If `mac` hasn't been populated yet, read efuse MAC as a fallback.
+    if (mac == 0) {
+        mac = ESP.getEfuseMac();
+    }
+
+    // mac is a 48-bit address stored in a uint64_t. Extract the 6 MAC bytes
+    // (LSB first). We form the node id from the lowest two bytes but present
+    // them in big-endian order so the ID matches the conventional human
+    // representation of the last two MAC octets (AA:BB -> 0xAABB).
+    uint8_t macBytes[6];
+    for (int i = 0; i < 6; ++i) {
+        macBytes[i] = static_cast<uint8_t>((mac >> (8 * i)) & 0xFF);
+    }
+
+    uint16_t node = static_cast<uint16_t>((static_cast<uint16_t>(macBytes[1]) << 8) |
+                                          static_cast<uint16_t>(macBytes[0]));
+    return node;
 }
 
 void buildNodeName(char* outName, size_t outLen) {
@@ -288,14 +303,35 @@ void buildNodeName(char* outName, size_t outLen) {
 }
 
 void initBleTransport() {
-    nodeId = computeNodeIdFromMac();
+    // Build a human-friendly node name from the efuse MAC first.
     buildNodeName(nodeName, sizeof(nodeName));
 
+    // Initialize BLE with that device name.
     BLEDevice::init(nodeName);
     bleAdvertising = BLEDevice::getAdvertising();
     bleAdvertising->setScanResponse(false);
     bleAdvertising->setMinInterval(BLE_ADV_MIN_INTERVAL_UNITS);
     bleAdvertising->setMaxInterval(BLE_ADV_MAX_INTERVAL_UNITS);
+
+    // Read the BLE controller address (string like "AA:BB:CC:DD:EE:FF") and
+    // parse it into the `mac` uint64_t so printed and used values match what
+    // other devices see on the air.
+    std::string bleAddr = BLEDevice::getAddress().toString();
+    unsigned int parts[6] = {0};
+    if (sscanf(bleAddr.c_str(), "%02x:%02x:%02x:%02x:%02x:%02x",
+               &parts[0], &parts[1], &parts[2], &parts[3], &parts[4], &parts[5]) == 6) {
+        uint64_t parsed = 0;
+        for (int i = 0; i < 6; ++i) {
+            parsed = (parsed << 8) | (static_cast<uint64_t>(parts[i]) & 0xFF);
+        }
+        mac = parsed;
+    } else {
+        // Fallback to efuse MAC when BLE address parsing fails.
+        mac = ESP.getEfuseMac();
+    }
+
+    // Now compute node id from the populated `mac`.
+    nodeId = computeNodeIdFromMac();
 
     Serial.print(F("[BLE] Device name: "));
     Serial.println(nodeName);
