@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SmartShelf - ESP32 Sensors</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.10.1"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <header class="max-w-5xl mx-auto p-6">
+    <h1 class="text-2xl font-bold">SmartShelf — ESP32 Sensors</h1>
+    <p class="text-sm text-gray-600">Tiles show gas, temperature and humidity (updates every second).</p>
+  </header>
+
+  <main class="max-w-5xl mx-auto p-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {% for sensor in sensors %}
+        {% set reading = readings.get(sensor.id) %}
+        {% include '_tile_line.html' %}
+      {% endfor %}
+    </div>
+  </main>
+
+</body>
+</html>

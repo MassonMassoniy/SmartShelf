@@ -1,0 +1,38 @@
+<div id="tile-{{sensor.id}}" hx-get="/sensor/{{sensor.id}}/tile?variant=gauge" hx-trigger="load, every 1s" hx-swap="outerHTML" class="bg-white rounded-lg shadow p-4">
+  <div class="flex items-center justify-between">
+    <div class="text-lg font-semibold">{{sensor.name}}</div>
+    <div class="text-xs text-gray-500">ID: {{sensor.id}}</div>
+  </div>
+
+  <div class="mt-3 grid grid-cols-1 gap-3 text-center">
+    {% set g_min = 0 %}
+    {% set g_max = 1000 %}
+    {% set gas_pct = ((reading.gas - g_min) / (g_max - g_min) * 100) if (reading.gas is not none) else 0 %}
+
+    <div class="flex items-center justify-center">
+      <svg width="200" height="110" viewBox="0 0 200 110">
+        <!-- background semicircle -->
+        <path d="M10 90 A80 80 0 0 1 190 90" fill="none" stroke="#e5e7eb" stroke-width="18" stroke-linecap="round" />
+        <!-- foreground arc (approx) -->
+        <path d="M10 90 A80 80 0 0 1 190 90" fill="none" stroke="#3b82f6" stroke-width="18" stroke-linecap="round"
+          stroke-dasharray="300" stroke-dashoffset="{{ (300 - (300 * (gas_pct|float / 100)))|round(0, 'floor') }}" />
+        <!-- center label -->
+        <text x="100" y="60" text-anchor="middle" class="text-sm" font-size="18" fill="#111827">{{reading.gas}}</text>
+        <text x="100" y="85" text-anchor="middle" class="text-xs" font-size="12" fill="#6b7280">Gas</text>
+      </svg>
+    </div>
+
+    <div class="grid grid-cols-2 gap-2">
+      <div class="p-3 bg-gray-50 rounded">
+        <div class="text-gray-500 text-sm">Temp</div>
+        <div class="text-xl font-medium">{{reading.temperature}} °C</div>
+      </div>
+      <div class="p-3 bg-gray-50 rounded">
+        <div class="text-gray-500 text-sm">Humidity</div>
+        <div class="text-xl font-medium">{{reading.humidity}} %</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-3 text-xs text-gray-400">Updated {{reading.ts}}</div>
+</div>
