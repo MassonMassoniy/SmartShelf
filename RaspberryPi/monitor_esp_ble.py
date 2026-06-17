@@ -9,9 +9,9 @@ Expected ESP payload in manufacturer data:
   temperature     : int16  (centi-degC)
   humidity        : uint16 (centi-%RH)
   proximityRaw    : uint16
-  ambientLightRaw : uint16
   whiteLightRaw   : uint16 (v2)
   ambientLux      : uint16 deci-lux (v2)
+  ambientLightRaw : uint16 (legacy/new payloads)
   vocIndex        : int16
   noxIndex        : int16
   srawVoc         : uint16 (v2)
@@ -71,7 +71,8 @@ def decode_payload(payload: bytes) -> SensorPacket:
     Decode BLE manufacturer payload.
 
     Supports:
-      - v2 payload:  <B H B h H H H H H h h H H H> (26 bytes)
+      - v2 payload:  <B H B h H H H H h h H H H> (24 bytes)
+      - v2 payload (legacy oversized build): <B H B h H H H H H h h H H H> (26 bytes)
       - New payload: <B H B h H H H h h H> (18 bytes)
       - Legacy payload: <B B B h H H H h h H> (17 bytes)
     """
@@ -92,6 +93,23 @@ def decode_payload(payload: bytes) -> SensorPacket:
             sraw_nox,
             sequence,
         ) = struct.unpack("<BHBhHHHHHhhHHH", payload)
+    elif len(payload) == 24:
+        (
+            protocol_version,
+            node_id,
+            flags,
+            temp_centi,
+            hum_centi,
+            proximity,
+            white_light,
+            ambient_deci_lux,
+            voc_index,
+            nox_index,
+            sraw_voc,
+            sraw_nox,
+            sequence,
+        ) = struct.unpack("<BHBhHHHHhhHHH", payload)
+        ambient_light = 0
     elif len(payload) == 18:
         (
             protocol_version,

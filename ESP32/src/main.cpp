@@ -65,7 +65,6 @@ struct __attribute__((packed)) SensorBlePayload {
     int16_t temperatureCenti;    // deg C * 100
     uint16_t humidityCenti;      // %RH * 100
     uint16_t proximityRaw;
-    uint16_t ambientLightRaw;
     uint16_t whiteLightRaw;
     uint16_t ambientLightDeciLux;  // lux * 10
     int16_t vocIndex;
@@ -351,7 +350,6 @@ void publishBlePacket(
     float temperatureC,
     float humidityRh,
     uint16_t prox,
-    uint16_t als,
     uint16_t white,
     float lux,
     int32_t vocIndex,
@@ -373,7 +371,6 @@ void publishBlePacket(
     payload.temperatureCenti = shtReadOk ? static_cast<int16_t>(temperatureC * 100.0f) : INT16_MIN;
     payload.humidityCenti = shtReadOk ? static_cast<uint16_t>(humidityRh * 100.0f) : 0;
     payload.proximityRaw = vcnlReadOk ? prox : 0;
-    payload.ambientLightRaw = vcnlReadOk ? als : 0;
     payload.whiteLightRaw = vcnlReadOk ? white : 0;
     if (vcnlReadOk && !isnan(lux) && lux > 0.0f) {
         float luxDeci = lux * 10.0f;
@@ -518,7 +515,6 @@ void loop() {
         temperatureC,
         humidityRh,
         prox,
-        als,
         white,
         lux,
         vocIndex,
