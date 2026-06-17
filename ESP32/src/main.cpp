@@ -5,6 +5,7 @@
 #include <NOxGasIndexAlgorithm.h>
 #include <BLEDevice.h>
 #include <cstring>
+#include <cmath>
 #include <string>
 
 namespace {
@@ -65,8 +66,12 @@ struct __attribute__((packed)) SensorBlePayload {
     uint16_t humidityCenti;      // %RH * 100
     uint16_t proximityRaw;
     uint16_t ambientLightRaw;
+    uint16_t whiteLightRaw;
+    uint16_t ambientLightDeciLux;  // lux * 10
     int16_t vocIndex;
     int16_t noxIndex;
+    uint16_t srawVoc;
+    uint16_t srawNox;
     uint16_t sequence;
 };
 
@@ -347,15 +352,19 @@ void publishBlePacket(
     float humidityRh,
     uint16_t prox,
     uint16_t als,
+    uint16_t white,
+    float lux,
     int32_t vocIndex,
-    int32_t noxIndex
+    int32_t noxIndex,
+    uint16_t srawVoc,
+    uint16_t srawNox
 ) {
     if (bleAdvertising == nullptr) {
         return;
     }
 
     SensorBlePayload payload{};
-    payload.protocolVersion = 1;
+    payload.protocolVersion = 2;
     payload.nodeId = nodeId;
     payload.flags =
         (shtReadOk ? 0x01 : 0x00) |
@@ -365,8 +374,20 @@ void publishBlePacket(
     payload.humidityCenti = shtReadOk ? static_cast<uint16_t>(humidityRh * 100.0f) : 0;
     payload.proximityRaw = vcnlReadOk ? prox : 0;
     payload.ambientLightRaw = vcnlReadOk ? als : 0;
+    payload.whiteLightRaw = vcnlReadOk ? white : 0;
+    if (vcnlReadOk && !isnan(lux) && lux > 0.0f) {
+        float luxDeci = lux * 10.0f;
+        if (luxDeci > 65535.0f) {
+            luxDeci = 65535.0f;
+        }
+        payload.ambientLightDeciLux = static_cast<uint16_t>(luxDeci + 0.5f);
+    } else {
+        payload.ambientLightDeciLux = 0;
+    }
     payload.vocIndex = sgpReadOk ? static_cast<int16_t>(vocIndex) : -1;
     payload.noxIndex = sgpReadOk ? static_cast<int16_t>(noxIndex) : -1;
+    payload.srawVoc = sgpReadOk ? srawVoc : 0;
+    payload.srawNox = sgpReadOk ? srawNox : 0;
     payload.sequence = packetSequence++;
 
     uint8_t packet[2 + sizeof(SensorBlePayload)] = {};
@@ -429,8 +450,8 @@ void loop() {
     float lux = NAN;
     uint16_t srawVoc = 0;
     uint16_t srawNox = 0;
-    int32_t vocIndex = 0;
-    int32_t noxIndex = 0;
+    int32_t vocIndex = -1;
+    int32_t noxIndex = -1;
 
     bool shtReadOk = false;
     bool vcnlReadOk = false;
@@ -498,8 +519,12 @@ void loop() {
         humidityRh,
         prox,
         als,
+        white,
+        lux,
         vocIndex,
-        noxIndex
+        noxIndex,
+        srawVoc,
+        srawNox
     );
 
     Serial.print(F("[BLE TX] node="));
@@ -525,6 +550,16 @@ void loop() {
         Serial.print(prox);
         Serial.print(F(" ALS="));
         Serial.print(als);
+        Serial.print(F(" White="));
+        Serial.print(white);
+        Serial.print(F(" Lux="));
+        Serial.print(lux, 2);
+    }
+    if (sgpReadOk) {
+        Serial.print(F(" SRAW_VOC="));
+        Serial.print(srawVoc);
+        Serial.print(F(" SRAW_NOX="));
+        Serial.print(srawNox);
     }
     if (sgpReadOk && sgp41ConditioningDone) {
         Serial.print(F(" VOC="));
