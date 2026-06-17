@@ -10,8 +10,12 @@ Expected ESP payload in manufacturer data:
   humidity        : uint16 (centi-%RH)
   proximityRaw    : uint16
   ambientLightRaw : uint16
+  whiteLightRaw   : uint16 (v2)
+  ambientLux      : uint16 deci-lux (v2)
   vocIndex        : int16
   noxIndex        : int16
+  srawVoc         : uint16 (v2)
+  srawNox         : uint16 (v2)
   sequence        : uint16
 """
 
@@ -43,8 +47,12 @@ class SensorPacket:
     humidity_rh: Optional[float]
     proximity: Optional[int]
     ambient_light: Optional[int]
+    white_light: Optional[int]
+    ambient_lux: Optional[float]
     voc_index: Optional[int]
     nox_index: Optional[int]
+    sraw_voc: Optional[int]
+    sraw_nox: Optional[int]
     sequence: int
 
 
@@ -63,10 +71,28 @@ def decode_payload(payload: bytes) -> SensorPacket:
     Decode BLE manufacturer payload.
 
     Supports:
+      - v2 payload:  <B H B h H H H H H h h H H H> (26 bytes)
       - New payload: <B H B h H H H h h H> (18 bytes)
       - Legacy payload: <B B B h H H H h h H> (17 bytes)
     """
-    if len(payload) == 18:
+    if len(payload) == 26:
+        (
+            protocol_version,
+            node_id,
+            flags,
+            temp_centi,
+            hum_centi,
+            proximity,
+            ambient_light,
+            white_light,
+            ambient_deci_lux,
+            voc_index,
+            nox_index,
+            sraw_voc,
+            sraw_nox,
+            sequence,
+        ) = struct.unpack("<BHBhHHHHHhhHHH", payload)
+    elif len(payload) == 18:
         (
             protocol_version,
             node_id,
@@ -79,6 +105,10 @@ def decode_payload(payload: bytes) -> SensorPacket:
             nox_index,
             sequence,
         ) = struct.unpack("<BHBhHHHhhH", payload)
+        white_light = 0
+        ambient_deci_lux = 0
+        sraw_voc = 0
+        sraw_nox = 0
     elif len(payload) == 17:
         (
             protocol_version,
@@ -92,6 +122,10 @@ def decode_payload(payload: bytes) -> SensorPacket:
             nox_index,
             sequence,
         ) = struct.unpack("<BBBhHHHhhH", payload)
+        white_light = 0
+        ambient_deci_lux = 0
+        sraw_voc = 0
+        sraw_nox = 0
     else:
         raise ValueError(f"Unsupported payload size: {len(payload)}")
 
@@ -103,8 +137,12 @@ def decode_payload(payload: bytes) -> SensorPacket:
     humidity_rh = (hum_centi / 100.0) if has_sht else None
     proximity_out = proximity if has_vcnl else None
     ambient_out = ambient_light if has_vcnl else None
+    white_out = white_light if has_vcnl else None
+    lux_out = (ambient_deci_lux / 10.0) if has_vcnl and ambient_deci_lux > 0 else None
     voc_out = voc_index if has_sgp and voc_index >= 0 else None
     nox_out = nox_index if has_sgp and nox_index >= 0 else None
+    sraw_voc_out = sraw_voc if has_sgp and sraw_voc > 0 else None
+    sraw_nox_out = sraw_nox if has_sgp and sraw_nox > 0 else None
 
     return SensorPacket(
         protocol_version=protocol_version,
@@ -114,8 +152,12 @@ def decode_payload(payload: bytes) -> SensorPacket:
         humidity_rh=humidity_rh,
         proximity=proximity_out,
         ambient_light=ambient_out,
+        white_light=white_out,
+        ambient_lux=lux_out,
         voc_index=voc_out,
         nox_index=nox_out,
+        sraw_voc=sraw_voc_out,
+        sraw_nox=sraw_nox_out,
         sequence=sequence,
     )
 
@@ -152,11 +194,11 @@ def print_status(
         f"Seen nodes: {len(nodes)} | "
         f"Stale threshold: {stale_seconds:.1f}s"
     )
-    print("-" * 125)
+    print("-" * 157)
     print(
-        "Node  State   Last(s)  Seq    Drops  Temp(C)  RH(%)  Prox   ALS    VOC   NOx  Flags  Address              Name"
+        "Node  State   Last(s)  Seq    Drops  Temp(C)  RH(%)  Prox   ALS   White   Lux    VOC   NOx  SRAWV  SRAWN  Flags  Address              Name"
     )
-    print("-" * 125)
+    print("-" * 157)
 
     for node_id in sorted(nodes.keys()):
         state = nodes[node_id]
@@ -177,15 +219,19 @@ def print_status(
             f"{format_optional(pkt.humidity_rh):>5s}  "
             f"{str(pkt.proximity) if pkt.proximity is not None else '--':>5s}  "
             f"{str(pkt.ambient_light) if pkt.ambient_light is not None else '--':>5s}  "
+            f"{str(pkt.white_light) if pkt.white_light is not None else '--':>6s}  "
+            f"{format_optional(pkt.ambient_lux, precision=1):>5s}  "
             f"{str(pkt.voc_index) if pkt.voc_index is not None else '--':>4s}  "
             f"{str(pkt.nox_index) if pkt.nox_index is not None else '--':>4s}  "
+            f"{str(pkt.sraw_voc) if pkt.sraw_voc is not None else '--':>5s}  "
+            f"{str(pkt.sraw_nox) if pkt.sraw_nox is not None else '--':>5s}  "
             f"0x{pkt.flags:02X}   "
             f"{state.address:18.18s}  "
             f"{state.name}"
         )
 
     missing = max(expected_nodes - len(nodes), 0)
-    print("-" * 125)
+    print("-" * 157)
     print(
         f"ONLINE={online}  STALE={stale}  MISSING={missing}  "
         f"TOTAL_RX={sum(state.received_count for state in nodes.values())}"
