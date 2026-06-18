@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
 
-from ..api.routes.routes import create_api
-# from ..ingestion.protocol_decoder import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS
-from ..services.backend_service import BackendService
+# Allow `python app/main.py` when cwd is RaspberryPi/backend.
+if __package__ in (None, ""):
+    _repo_root = Path(__file__).resolve().parents[3]
+    if str(_repo_root) not in sys.path:
+        sys.path.insert(0, str(_repo_root))
 
-from ..config.constants import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS
+from RaspberryPi.backend.api.routes.routes import create_api
+from RaspberryPi.backend.config.constants import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS
+from RaspberryPi.backend.services.backend_service import BackendService
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="SmartShelf Raspberry Pi backend service.")

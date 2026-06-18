@@ -77,7 +77,7 @@ class BackendService:
         self.stale_seconds = stale_seconds
 
         self.collector = BlePacketCollector(company_id=company_id)
-        self.cache = RollingSecondCache(file_path=cache_path)
+        self.cache = TenMinuteCache(file_path=cache_path)
         self.storage = SQLiteStorage(db_path=db_path)
 
         self.decode_errors = 0

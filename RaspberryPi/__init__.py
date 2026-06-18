@@ -1,0 +1,1 @@
+"""SmartShelf Raspberry Pi package."""
