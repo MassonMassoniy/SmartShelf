@@ -4,8 +4,8 @@ from typing import Literal, Optional
 
 from fastapi import FastAPI, Query
 
-from .models import HealthResponse, NodeLatestReading, NodeStatus, RealtimeResponse
-from .service import BackendService
+from ..schemas.models import HealthResponse, NodeLatestReading, NodeStatus, RealtimeResponse
+from ...services.backend_service import BackendService
 
 
 def create_api(service: BackendService, lifespan=None) -> FastAPI:

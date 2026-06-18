@@ -7,7 +7,7 @@ from collections import deque
 from typing import Deque, Dict, List
 
 
-class RollingSecondCache:
+class TenMinuteCache:
     def __init__(
         self,
         file_path: str,

@@ -4,10 +4,7 @@ import struct
 from dataclasses import dataclass
 from typing import Optional
 
-DEFAULT_COMPANY_ID = 0xFFFF
-EXPECTED_NODES = 9
-STALE_SECONDS = 4.0
-
+from ..config.constants import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS
 
 @dataclass
 class SensorPacket:

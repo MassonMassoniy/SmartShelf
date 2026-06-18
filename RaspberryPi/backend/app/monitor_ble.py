@@ -9,8 +9,10 @@ import signal
 import time
 from typing import Dict, Optional
 
-from .collector import BlePacketCollector
-from .protocol import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS, NodeState
+from ..ingestion.collector import BlePacketCollector
+from ..ingestion.protocol_decoder import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS, NodeState
+
+from ..config.constants import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS
 
 PRINT_PERIOD_SECONDS = 1.0
 

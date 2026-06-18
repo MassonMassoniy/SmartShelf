@@ -6,10 +6,11 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from .api import create_api
-from .protocol import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS
-from .service import BackendService
+from ..api.routes.routes import create_api
+# from ..ingestion.protocol_decoder import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS
+from ..services.backend_service import BackendService
 
+from ..config.constants import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="SmartShelf Raspberry Pi backend service.")

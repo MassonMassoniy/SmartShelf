@@ -6,7 +6,7 @@ from typing import Callable, Dict, List, Optional
 
 from bleak import BleakScanner
 
-from .protocol import NodeState, SensorPacket, decode_payload, seq_delta
+from .protocol_decoder import NodeState, SensorPacket, decode_payload, seq_delta
 
 PacketListener = Callable[["PacketEvent"], None]
 
