@@ -13,6 +13,7 @@ from flask import Flask, jsonify, render_template, request
 app = Flask(__name__, template_folder='templates')
 
 BACKEND_BASE_URL = os.getenv("SMARTSHELF_BACKEND_URL", "http://127.0.0.1:8000")
+BACKEND_STREAM_URL = os.getenv("SMARTSHELF_BACKEND_STREAM_URL", f"{BACKEND_BASE_URL.rstrip('/')}/nodes/stream")
 
 # Last successful backend snapshot; used when backend is temporarily unavailable.
 _LAST_SNAPSHOT: dict[str, Any] = {
@@ -72,7 +73,12 @@ def _get_snapshot_with_fallback() -> tuple[list[dict[str, Any]], dict[str, dict[
 @app.route("/")
 def index():
 	sensors, readings = _get_snapshot_with_fallback()
-	return render_template("index.html", sensors=sensors, readings=readings)
+	return render_template(
+		"index.html",
+		sensors=sensors,
+		readings=readings,
+		backend_stream_url=BACKEND_STREAM_URL,
+	)
 
 @app.route("/sensor/<sensor_id>/tile")
 def sensor_tile(sensor_id):

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 # Allow `python app/main.py` when cwd is RaspberryPi/backend.
 if __package__ in (None, ""):
@@ -47,7 +48,15 @@ def build_app(args: argparse.Namespace) -> FastAPI:
         finally:
             await service.stop()
 
-    return create_api(service, lifespan=lifespan)
+    app = create_api(service, lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:5000", "http://localhost:5000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    return app
 
 
 def main_back() -> None:
