@@ -50,7 +50,7 @@ def build_app(args: argparse.Namespace) -> FastAPI:
     return create_api(service, lifespan=lifespan)
 
 
-def main() -> None:
+def main_back() -> None:
     args = parse_args()
     app = build_app(args)
     uvicorn.run(app, host=args.host, port=args.port)

@@ -1,3 +1,3 @@
-from RaspberryPi.backend.app.main import main
+from RaspberryPi.backend.app.main_back import main
 
 main()

@@ -10,7 +10,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from RaspberryPi.backend.app.main import main
+from RaspberryPi.backend.app.main_back import main_back
+from RaspberryPi.frontend.main_front import main_front
 
 if __name__ == "__main__":
-    main()
+    main_back()
+    main_front()
