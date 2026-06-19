@@ -57,5 +57,5 @@ def main_back() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main_back()
 
