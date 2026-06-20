@@ -13,7 +13,7 @@ namespace {
 constexpr uint8_t PIN_SDA = 5;   // XIAO ESP32-S3 D4
 constexpr uint8_t PIN_SCL = 6;   // XIAO ESP32-S3 D5
 constexpr uint8_t PIN_VCNL4040_INT = 9;  // XIAO ESP32-S3 D2
-constexpr uint32_t LOOP_PERIOD_MS = 1000;
+constexpr uint32_t LOOP_PERIOD_MS = 100;
 constexpr uint32_t SGP41_CONDITIONING_S = 10;
 constexpr uint16_t BLE_COMPANY_ID = 0xFFFF;  // Replace with your own company ID if available.
 constexpr uint16_t BLE_ADV_MIN_INTERVAL_UNITS = 320;  // 200 ms
@@ -57,6 +57,8 @@ BLEAdvertising* bleAdvertising = nullptr;
 
 constexpr uint16_t VCNL4040_PS_LOW_THRESHOLD = 1200;
 constexpr uint16_t VCNL4040_PS_HIGH_THRESHOLD = 2000;
+constexpr uint16_t VCNL4040_PS_CONF12_MAX_RANGE = 0x0B0E;  // PS_INT both + 16-bit + duty 1/40 + IT 8T + power on
+constexpr uint16_t VCNL4040_PS_CONF3MS_MAX_RANGE = 0x0700; // LED current 200 mA (PS_MS high byte bits[2:0] = 0b111)
 
 struct __attribute__((packed)) SensorBlePayload {
     uint8_t protocolVersion;
@@ -207,12 +209,16 @@ bool initVcnl4040() {
         return false;
     }
 
-    // Bring ALS/PS blocks out of shutdown using baseline configuration.
+    // Bring ALS/PS blocks out of shutdown and configure proximity for
+    // long-range presence detection sensitivity:
+    // - LED current: 200 mA
+    // - Duty ratio: 1/40
+    // - Integration time: 8T
+    // - Proximity high resolution: 16-bit
     bool ok = true;
     ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_ALS_CONF, 0x0000);
-    // PS_INT bits[9:8] = 0b11 => trigger on both close and away.
-    ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_CONF12, 0x0300);
-    ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_CONF3MS, 0x0000);
+    ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_CONF12, VCNL4040_PS_CONF12_MAX_RANGE);
+    ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_CONF3MS, VCNL4040_PS_CONF3MS_MAX_RANGE);
     ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_THDL, VCNL4040_PS_LOW_THRESHOLD);
     ok &= writeRegister16(ADDR_VCNL4040, REG_VCNL4040_PS_THDH, VCNL4040_PS_HIGH_THRESHOLD);
     if (!ok) {
