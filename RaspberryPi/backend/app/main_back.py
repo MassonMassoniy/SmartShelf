@@ -23,6 +23,20 @@ from RaspberryPi.backend.config.constants import DEFAULT_COMPANY_ID, EXPECTED_NO
 from RaspberryPi.backend.services.backend_service import BackendService
 
 
+SENSOR_LABEL_BY_NODE_ID = {
+    3073: "C3",
+    3077: "A1",
+    3165: "C2",
+    3197: "A2",
+    16341: "A3",
+    16645: "B1",
+    16681: "B2",
+    23109: "B3",
+    36237: "C1",
+}
+SENSOR_LABEL_ORDER = ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"]
+
+
 class AsyncServiceRuntime:
     def __init__(self, service: BackendService) -> None:
         self.service = service
@@ -86,21 +100,70 @@ def _map_node_reading(node: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _empty_reading(node_id: int) -> dict[str, Any]:
+    return {
+        "gas": None,
+        "temperature": None,
+        "humidity": None,
+        "ts": None,
+        "node_id": node_id,
+        "address": None,
+        "name": None,
+    }
+
+
+def _sensor_sort_key(sensor: dict[str, Any]) -> tuple[int, int]:
+    label = sensor.get("label")
+    if label in SENSOR_LABEL_ORDER:
+        return SENSOR_LABEL_ORDER.index(label), int(sensor.get("node_id") or 0)
+    return len(SENSOR_LABEL_ORDER), int(sensor.get("node_id") or 0)
+
+
+def _build_sensor(node_id: int) -> dict[str, Any]:
+    label = SENSOR_LABEL_BY_NODE_ID.get(node_id)
+    if label is None:
+        label = f"Unmapped #{node_id}"
+        name = label
+        is_expected = False
+    else:
+        name = label
+        is_expected = True
+    return {
+        "id": f"node-{node_id}",
+        "name": name,
+        "label": label,
+        "node_id": node_id,
+        "is_expected": is_expected,
+    }
+
+
+def _default_snapshot() -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    sensors = [_build_sensor(node_id) for node_id in SENSOR_LABEL_BY_NODE_ID]
+    readings = {f"node-{node_id}": _empty_reading(node_id) for node_id in SENSOR_LABEL_BY_NODE_ID}
+    sensors.sort(key=_sensor_sort_key)
+    return sensors, readings
+
+
 def _load_latest_snapshot(service: BackendService) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
     nodes = service.get_latest_nodes()
-    sensors: list[dict[str, Any]] = []
     readings: dict[str, dict[str, Any]] = {}
+    seen_node_ids: set[int] = set()
 
     for node in nodes:
         node_id = node.get("node_id")
         if node_id is None:
             continue
-        sensor_id = f"node-{int(node_id)}"
-        sensor_name = node.get("name") or f"ESP32 #{int(node_id)}"
-        sensors.append({"id": sensor_id, "name": sensor_name, "node_id": int(node_id)})
+        node_id = int(node_id)
+        sensor_id = f"node-{node_id}"
+        seen_node_ids.add(node_id)
         readings[sensor_id] = _map_node_reading(node)
 
-    sensors.sort(key=lambda s: s["node_id"])
+    expected_node_ids = set(SENSOR_LABEL_BY_NODE_ID.keys())
+    sensors = [_build_sensor(node_id) for node_id in expected_node_ids | seen_node_ids]
+    for node_id in expected_node_ids:
+        readings.setdefault(f"node-{node_id}", _empty_reading(node_id))
+
+    sensors.sort(key=_sensor_sort_key)
     return sensors, readings
 
 def parse_args() -> argparse.Namespace:
@@ -151,13 +214,18 @@ def build_app(args: argparse.Namespace) -> Flask:
             sensors, readings = _load_latest_snapshot(service)
             last_snapshot = {"sensors": sensors, "readings": readings}
         except Exception:
-            sensors, readings = last_snapshot["sensors"], last_snapshot["readings"]
+            if last_snapshot["sensors"]:
+                sensors, readings = last_snapshot["sensors"], last_snapshot["readings"]
+            else:
+                sensors, readings = _default_snapshot()
 
         return render_template(
             "index.html",
             sensors=sensors,
             readings=readings,
             backend_stream_url="/nodes/stream",
+            backend_api_base_url="",
+            stale_seconds=args.stale_seconds,
         )
 
     @app.route("/sensor/<sensor_id>/tile")
@@ -167,7 +235,10 @@ def build_app(args: argparse.Namespace) -> Flask:
             sensors, readings = _load_latest_snapshot(service)
             last_snapshot = {"sensors": sensors, "readings": readings}
         except Exception:
-            sensors, readings = last_snapshot["sensors"], last_snapshot["readings"]
+            if last_snapshot["sensors"]:
+                sensors, readings = last_snapshot["sensors"], last_snapshot["readings"]
+            else:
+                sensors, readings = _default_snapshot()
 
         reading = readings.get(
             sensor_id,
