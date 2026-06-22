@@ -75,15 +75,25 @@ class AsyncServiceRuntime:
                 self._thread = None
 
 
+def _resolve_repo_path(path_value: str) -> str:
+    path = Path(path_value)
+    if path.is_absolute():
+        return str(path)
+    return str((REPO_ROOT / path).resolve())
+
+
 def parse_args() -> argparse.Namespace:
+    db_path = _resolve_repo_path("RaspberryPi/data/smartshelf.db")
+    cache_path = _resolve_repo_path("RaspberryPi/data/second_cache.json")
+
     parser = argparse.ArgumentParser(description="SmartShelf Raspberry Pi backend service.")
     parser.add_argument("--host", default="0.0.0.0", help="Bind host for HTTP server")
     parser.add_argument("--port", type=int, default=8000, help="Bind port for HTTP server")
     parser.add_argument("--company-id", type=lambda x: int(x, 0), default=DEFAULT_COMPANY_ID)
     parser.add_argument("--expected-nodes", type=int, default=EXPECTED_NODES)
     parser.add_argument("--stale-seconds", type=float, default=STALE_SECONDS)
-    parser.add_argument("--db-path", default="RaspberryPi/data/smartshelf.db")
-    parser.add_argument("--cache-path", default="RaspberryPi/data/second_cache.json")
+    parser.add_argument("--db-path", default=db_path)
+    parser.add_argument("--cache-path", default=cache_path)
     return parser.parse_args()
 
 
