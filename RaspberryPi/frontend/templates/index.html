@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SmartShelf - ESP32 Sensors</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <header class="max-w-5xl mx-auto p-6">
+    <h1 class="text-2xl font-bold">SmartShelf — ESP32 Sensors</h1>
+    <p class="text-sm text-gray-600">Tiles show gas, temperature and humidity from a live backend stream.</p>
+    <p class="text-sm text-gray-700 mt-1">Backend time: <span id="backend-clock">--:--:--</span> <span id="stream-status" class="text-gray-500">(connecting)</span></p>
+  </header>
+
+  <main class="max-w-5xl mx-auto p-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {% for sensor in sensors %}
+        {% set reading = readings.get(sensor.id) %}
+        {% include '_tile_line.html' %}
+      {% endfor %}
+    </div>
+  </main>
+
+  <script>
+    const streamUrl = {{ backend_stream_url | tojson }};
+    const backendClock = document.getElementById("backend-clock");
+    const streamStatus = document.getElementById("stream-status");
+
+    function formatTime(epochSeconds) {
+      if (!epochSeconds) return "--:--:--";
+      const d = new Date(epochSeconds * 1000);
+      return d.toLocaleTimeString();
+    }
+
+    function clampPercent(value) {
+      if (value < 0) return 0;
+      if (value > 100) return 100;
+      return value;
+    }
+
+    function setBarState(barEl, metric, rawValue) {
+      if (!barEl) return;
+
+      const value = rawValue == null ? null : Number(rawValue);
+      let pct = 0;
+      let cls = "bg-gray-400";
+
+      if (metric === "temperature") {
+        pct = value == null ? 0 : clampPercent((value / 50) * 100);
+        if (value == null) cls = "bg-gray-400";
+        else if (value < 18 || value > 30) cls = "bg-red-500";
+        else if (value < 22 || value > 27) cls = "bg-yellow-400";
+        else cls = "bg-green-500";
+      } else if (metric === "humidity") {
+        pct = value == null ? 0 : clampPercent(value);
+        if (value == null) cls = "bg-gray-400";
+        else if (value < 30 || value > 70) cls = "bg-red-500";
+        else if (value < 40 || value > 60) cls = "bg-yellow-400";
+        else cls = "bg-green-500";
+      } else if (metric === "gas") {
+        pct = value == null ? 0 : clampPercent((value / 1000) * 100);
+        if (value == null) cls = "bg-gray-400";
+        else if (value > 700) cls = "bg-red-500";
+        else if (value > 450) cls = "bg-yellow-400";
+        else cls = "bg-green-500";
+      }
+
+      barEl.className = `${cls} h-4 rounded`;
+      barEl.style.width = `${pct.toFixed(1)}%`;
+    }
+
+    function updateTile(node, serverTime) {
+      const sensorId = `node-${Number(node.node_id)}`;
+      const tile = document.querySelector(`[data-sensor-id="${sensorId}"]`);
+      if (!tile) return;
+
+      const gas = node.voc_index;
+      const temperature = node.temperature_c;
+      const humidity = node.humidity_rh;
+      const updatedTs = Number(node.received_at || serverTime || 0);
+
+      const gasEl = tile.querySelector('[data-field="gas"]');
+      const tempEl = tile.querySelector('[data-field="temperature"]');
+      const humEl = tile.querySelector('[data-field="humidity"]');
+      const updatedEl = tile.querySelector('[data-field="updated"]');
+
+      if (gasEl) gasEl.textContent = gas == null ? "--" : String(gas);
+      if (tempEl) tempEl.textContent = temperature == null ? "--" : String(temperature);
+      if (humEl) humEl.textContent = humidity == null ? "--" : String(humidity);
+      if (updatedEl) updatedEl.textContent = formatTime(updatedTs);
+
+      setBarState(tile.querySelector('[data-bar="gas"]'), "gas", gas);
+      setBarState(tile.querySelector('[data-bar="temperature"]'), "temperature", temperature);
+      setBarState(tile.querySelector('[data-bar="humidity"]'), "humidity", humidity);
+    }
+
+    const evtSource = new EventSource(streamUrl);
+
+    evtSource.onopen = () => {
+      streamStatus.textContent = "(live)";
+      streamStatus.className = "text-green-600";
+    };
+
+    evtSource.onmessage = (event) => {
+      const payload = JSON.parse(event.data);
+      const serverTime = Number(payload.server_time || 0);
+
+      backendClock.textContent = formatTime(serverTime);
+      if (Array.isArray(payload.nodes)) {
+        payload.nodes.forEach((node) => updateTile(node, serverTime));
+      }
+    };
+
+    evtSource.onerror = () => {
+      streamStatus.textContent = "(reconnecting...)";
+      streamStatus.className = "text-amber-600";
+    };
+  </script>
+
+</body>
+</html>
