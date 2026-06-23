@@ -139,6 +139,11 @@
       return url.toString();
     }
 
+    function setTextIfChanged(el, nextText) {
+      if (!el || el.textContent === nextText) return;
+      el.textContent = nextText;
+    }
+
     function setBarState(barEl, metric, rawValue) {
       if (!barEl) return;
       const value = rawValue == null ? null : Number(rawValue);
@@ -165,8 +170,10 @@
         else cls = "bg-emerald-500";
       }
 
-      barEl.className = `${cls} h-1.5 rounded-full`;
-      barEl.style.width = `${pct.toFixed(1)}%`;
+      const nextWidth = `${pct.toFixed(1)}%`;
+      const nextClass = `${cls} h-1.5 rounded-full transition-none`;
+      if (barEl.style.width !== nextWidth) barEl.style.width = nextWidth;
+      if (barEl.className !== nextClass) barEl.className = nextClass;
     }
 
     function initTileBars() {
@@ -176,6 +183,10 @@
     }
 
     function setTileAvailability(tile, state, updatedTs = null) {
+      if (updatedTs) tile.dataset.lastSeen = String(updatedTs);
+      if (tile.dataset.tileState === state) return;
+
+      tile.dataset.tileState = state;
       const statusEl = tile.querySelector('[data-field="status"]');
       if (state === "live") {
         tile.classList.remove("opacity-60", "opacity-80", "bg-slate-100/80", "border-slate-300/70");
@@ -186,13 +197,13 @@
         }
       } else {
         tile.classList.remove("bg-white/90", "border-white/60");
+        tile.classList.remove("opacity-60", "opacity-80");
         tile.classList.add(state === "stale" ? "opacity-80" : "opacity-60", "bg-slate-100/80", "border-slate-300/70");
         if (statusEl) {
           statusEl.textContent = state === "stale" ? "Stale" : "Offline";
           statusEl.className = "rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500";
         }
       }
-      if (updatedTs) tile.dataset.lastSeen = String(updatedTs);
     }
 
     function updateTile(node, serverTime) {
@@ -205,15 +216,10 @@
       const humidity = node.humidity_rh;
       const updatedTs = Number(node.received_at || serverTime || 0);
 
-      const gasEl = tile.querySelector('[data-field="gas"]');
-      const tempEl = tile.querySelector('[data-field="temperature"]');
-      const humEl = tile.querySelector('[data-field="humidity"]');
-      const updatedEl = tile.querySelector('[data-field="updated"]');
-
-      if (gasEl) gasEl.textContent = gas == null ? "--" : String(gas);
-      if (tempEl) tempEl.textContent = temperature == null ? "--" : String(temperature);
-      if (humEl) humEl.textContent = humidity == null ? "--" : String(humidity);
-      if (updatedEl) updatedEl.textContent = formatTime(updatedTs);
+      setTextIfChanged(tile.querySelector('[data-field="gas"]'), gas == null ? "--" : String(gas));
+      setTextIfChanged(tile.querySelector('[data-field="temperature"]'), temperature == null ? "--" : String(temperature));
+      setTextIfChanged(tile.querySelector('[data-field="humidity"]'), humidity == null ? "--" : String(humidity));
+      setTextIfChanged(tile.querySelector('[data-field="updated"]'), formatTime(updatedTs));
 
       setBarState(tile.querySelector('[data-bar="gas"]'), "gas", gas);
       setBarState(tile.querySelector('[data-bar="temperature"]'), "temperature", temperature);
@@ -226,10 +232,11 @@
       document.querySelectorAll(".sensor-tile").forEach((tile) => {
         const lastSeen = Number(tile.dataset.lastSeen || 0);
         if (!lastSeen) {
-          setTileAvailability(tile, "offline");
-        } else if (now - lastSeen > staleSeconds) {
-          setTileAvailability(tile, "stale");
+          if (tile.dataset.tileState !== "offline") setTileAvailability(tile, "offline");
+          return;
         }
+        const nextState = now - lastSeen > staleSeconds ? "stale" : "live";
+        if (tile.dataset.tileState !== nextState) setTileAvailability(tile, nextState);
       });
     }
 
