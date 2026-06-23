@@ -3,14 +3,11 @@ from __future__ import annotations
 import argparse
 import atexit
 import asyncio
-import json
 import sys
 import threading
-import time
 from pathlib import Path
-from typing import Any
 
-from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+from flask import Flask
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -135,4 +132,3 @@ def main_back() -> None:
 
 if __name__ == "__main__":
     main_back()
-

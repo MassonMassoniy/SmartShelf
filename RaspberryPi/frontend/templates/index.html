@@ -3,34 +3,126 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SmartShelf - ESP32 Sensors</title>
+  <title>SmartShelf Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
 </head>
-<body class="bg-gray-100 min-h-screen">
-  <header class="max-w-5xl mx-auto p-6">
-    <h1 class="text-2xl font-bold">SmartShelf — ESP32 Sensors</h1>
-    <p class="text-sm text-gray-600">Tiles show gas, temperature and humidity from a live backend stream.</p>
-    <p class="text-sm text-gray-700 mt-1">Backend time: <span id="backend-clock">--:--:--</span> <span id="stream-status" class="text-gray-500">(connecting)</span></p>
-  </header>
+<body class="h-screen overflow-hidden bg-slate-950 text-slate-900">
+  <div class="flex h-screen flex-col bg-[radial-gradient(circle_at_top_left,_#38bdf8_0,_transparent_28%),linear-gradient(135deg,_#0f172a_0%,_#1e293b_45%,_#0f172a_100%)] p-2">
+    <header class="mb-2 flex h-12 shrink-0 items-center justify-between rounded-2xl border border-white/10 bg-white/90 px-3 shadow-xl shadow-slate-950/20 backdrop-blur">
+      <div class="flex items-center gap-3">
+        <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-950 text-sm font-black text-cyan-300">SS</div>
+        <div>
+          <h1 class="text-base font-black leading-tight tracking-tight">SmartShelf</h1>
+          <p class="text-[11px] font-medium text-slate-500">9-node live sensor dashboard</p>
+        </div>
+      </div>
+      <nav class="flex rounded-full bg-slate-100 p-1 text-xs font-bold text-slate-500">
+        <button class="tab-button rounded-full px-3 py-1.5 text-slate-950 shadow-sm" data-tab="tiles">Live Tiles</button>
+        <button class="tab-button rounded-full px-3 py-1.5" data-tab="history">Minute History</button>
+        <button class="tab-button rounded-full px-3 py-1.5" data-tab="realtime">Realtime Cache</button>
+      </nav>
+      <div class="flex items-center gap-2 text-[11px] font-semibold">
+        <span id="backend-clock" class="rounded-full bg-slate-100 px-2 py-1 text-slate-600">--:--:--</span>
+        <span id="stream-status" class="rounded-full bg-amber-100 px-2 py-1 text-amber-700">connecting</span>
+      </div>
+    </header>
 
-  <main class="max-w-5xl mx-auto p-6">
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {% for sensor in sensors %}
-        {% set reading = readings.get(sensor.id) %}
-        {% include '_tile_line.html' %}
-      {% endfor %}
-    </div>
-  </main>
+    <main class="min-h-0 flex-1">
+      <section id="tab-tiles" class="tab-panel h-full">
+        <div class="grid h-full grid-cols-3 grid-rows-3 gap-2">
+          {% for sensor in sensors %}
+            {% if loop.index <= 9 or not sensor.is_expected %}
+              {% set reading = readings.get(sensor.id) %}
+              {% include '_tile_line.html' %}
+            {% endif %}
+          {% endfor %}
+        </div>
+      </section>
+
+      <section id="tab-history" class="tab-panel hidden h-full">
+        <div class="flex h-full flex-col rounded-2xl border border-white/20 bg-white/95 p-2 shadow-xl shadow-slate-950/20">
+          <div class="mb-2 grid shrink-0 grid-cols-12 gap-2 text-xs">
+            <select id="history-mode" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
+              <option value="single">One Sensor</option>
+              <option value="compare">All Sensors</option>
+            </select>
+            <select id="history-sensor" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
+            <select id="history-compare-metric" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
+            <select id="history-range" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
+              <option value="3600">Last 1h</option>
+              <option value="21600">Last 6h</option>
+              <option value="86400" selected>Last 24h</option>
+              <option value="604800">Last 7d</option>
+              <option value="custom">Custom</option>
+            </select>
+            <input id="history-from" type="datetime-local" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold" />
+            <input id="history-to" type="datetime-local" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold" />
+            <div id="history-metrics" class="col-span-8 flex flex-wrap items-center gap-3 rounded-xl bg-slate-100 px-3 py-1.5 font-semibold text-slate-600"></div>
+            <select id="history-outliers" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
+              <option value="include">Include outliers</option>
+              <option value="exclude">Exclude outliers</option>
+            </select>
+            <button id="history-refresh" class="col-span-2 rounded-xl bg-slate-950 px-3 py-1.5 font-black text-white">Refresh</button>
+          </div>
+          <div class="relative min-h-0 flex-1 rounded-2xl bg-slate-50 p-2">
+            <canvas id="history-chart"></canvas>
+            <div id="history-empty" class="pointer-events-none absolute inset-0 hidden items-center justify-center text-sm font-bold text-slate-400">No minute history for this selection</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-realtime" class="tab-panel hidden h-full">
+        <div class="flex h-full flex-col rounded-2xl border border-white/20 bg-white/95 p-2 shadow-xl shadow-slate-950/20">
+          <div class="mb-2 grid shrink-0 grid-cols-12 gap-2 text-xs">
+            <select id="realtime-mode" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
+              <option value="single">One Sensor</option>
+              <option value="compare">All Sensors</option>
+            </select>
+            <select id="realtime-sensor" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
+            <select id="realtime-compare-metric" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
+            <select id="realtime-window" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
+              <option value="60">Last 1m</option>
+              <option value="180">Last 3m</option>
+              <option value="300">Last 5m</option>
+              <option value="600" selected>Last 10m</option>
+            </select>
+            <div id="realtime-metrics" class="col-span-12 flex flex-wrap items-center gap-3 rounded-xl bg-slate-100 px-3 py-1.5 font-semibold text-slate-600"></div>
+          </div>
+          <div class="relative min-h-0 flex-1 rounded-2xl bg-slate-50 p-2">
+            <canvas id="realtime-chart"></canvas>
+            <div id="realtime-empty" class="pointer-events-none absolute inset-0 hidden items-center justify-center text-sm font-bold text-slate-400">Waiting for realtime cache data</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
 
   <script>
     const streamUrl = {{ backend_stream_url | tojson }};
+    const apiBaseUrl = {{ backend_api_base_url | default("") | tojson }};
+    const staleSeconds = Number({{ stale_seconds | default(4) | tojson }});
+    const sensors = {{ sensors | tojson }};
+    const sensorByNodeId = new Map(sensors.map((sensor) => [Number(sensor.node_id), sensor]));
     const backendClock = document.getElementById("backend-clock");
     const streamStatus = document.getElementById("stream-status");
+    let historyChart = null;
+    let realtimeChart = null;
+
+    const metrics = [
+      { field: "temperature_c", tileField: "temperature", label: "Temperature", unit: "°C", color: "#ef4444" },
+      { field: "humidity_rh", tileField: "humidity", label: "Humidity", unit: "%", color: "#0ea5e9" },
+      { field: "voc_index", tileField: "gas", label: "VOC Index", unit: "", color: "#10b981" },
+    ];
+    const palette = ["#0891b2", "#7c3aed", "#dc2626", "#16a34a", "#ea580c", "#2563eb", "#be123c", "#4f46e5", "#0f766e", "#64748b"];
 
     function formatTime(epochSeconds) {
       if (!epochSeconds) return "--:--:--";
-      const d = new Date(epochSeconds * 1000);
-      return d.toLocaleTimeString();
+      return new Date(epochSeconds * 1000).toLocaleTimeString();
+    }
+
+    function formatChartTime(epochSeconds) {
+      return new Date(epochSeconds * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     }
 
     function clampPercent(value) {
@@ -39,35 +131,79 @@
       return value;
     }
 
+    function apiUrl(path, params = {}) {
+      const url = new URL(`${apiBaseUrl}${path}`, window.location.origin);
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== "") url.searchParams.set(key, value);
+      });
+      return url.toString();
+    }
+
+    function setTextIfChanged(el, nextText) {
+      if (!el || el.textContent === nextText) return;
+      el.textContent = nextText;
+    }
+
     function setBarState(barEl, metric, rawValue) {
       if (!barEl) return;
-
       const value = rawValue == null ? null : Number(rawValue);
       let pct = 0;
-      let cls = "bg-gray-400";
+      let cls = "bg-slate-300";
 
       if (metric === "temperature") {
         pct = value == null ? 0 : clampPercent((value / 50) * 100);
-        if (value == null) cls = "bg-gray-400";
+        if (value == null) cls = "bg-slate-300";
         else if (value < 18 || value > 30) cls = "bg-red-500";
-        else if (value < 22 || value > 27) cls = "bg-yellow-400";
-        else cls = "bg-green-500";
+        else if (value < 22 || value > 27) cls = "bg-amber-400";
+        else cls = "bg-emerald-500";
       } else if (metric === "humidity") {
         pct = value == null ? 0 : clampPercent(value);
-        if (value == null) cls = "bg-gray-400";
+        if (value == null) cls = "bg-slate-300";
         else if (value < 30 || value > 70) cls = "bg-red-500";
-        else if (value < 40 || value > 60) cls = "bg-yellow-400";
-        else cls = "bg-green-500";
+        else if (value < 40 || value > 60) cls = "bg-amber-400";
+        else cls = "bg-emerald-500";
       } else if (metric === "gas") {
         pct = value == null ? 0 : clampPercent((value / 1000) * 100);
-        if (value == null) cls = "bg-gray-400";
+        if (value == null) cls = "bg-slate-300";
         else if (value > 700) cls = "bg-red-500";
-        else if (value > 450) cls = "bg-yellow-400";
-        else cls = "bg-green-500";
+        else if (value > 450) cls = "bg-amber-400";
+        else cls = "bg-emerald-500";
       }
 
-      barEl.className = `${cls} h-4 rounded`;
-      barEl.style.width = `${pct.toFixed(1)}%`;
+      const nextWidth = `${pct.toFixed(1)}%`;
+      const nextClass = `${cls} h-1.5 rounded-full transition-none`;
+      if (barEl.style.width !== nextWidth) barEl.style.width = nextWidth;
+      if (barEl.className !== nextClass) barEl.className = nextClass;
+    }
+
+    function initTileBars() {
+      document.querySelectorAll("[data-bar]").forEach((bar) => {
+        bar.style.width = `${Number(bar.dataset.initialWidth || 0).toFixed(1)}%`;
+      });
+    }
+
+    function setTileAvailability(tile, state, updatedTs = null) {
+      if (updatedTs) tile.dataset.lastSeen = String(updatedTs);
+      if (tile.dataset.tileState === state) return;
+
+      tile.dataset.tileState = state;
+      const statusEl = tile.querySelector('[data-field="status"]');
+      if (state === "live") {
+        tile.classList.remove("opacity-60", "opacity-80", "bg-slate-100/80", "border-slate-300/70");
+        tile.classList.add("bg-white/90", "border-white/60");
+        if (statusEl) {
+          statusEl.textContent = "Live";
+          statusEl.className = "rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700";
+        }
+      } else {
+        tile.classList.remove("bg-white/90", "border-white/60");
+        tile.classList.remove("opacity-60", "opacity-80");
+        tile.classList.add(state === "stale" ? "opacity-80" : "opacity-60", "bg-slate-100/80", "border-slate-300/70");
+        if (statusEl) {
+          statusEl.textContent = state === "stale" ? "Stale" : "Offline";
+          statusEl.className = "rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500";
+        }
+      }
     }
 
     function updateTile(node, serverTime) {
@@ -80,43 +216,269 @@
       const humidity = node.humidity_rh;
       const updatedTs = Number(node.received_at || serverTime || 0);
 
-      const gasEl = tile.querySelector('[data-field="gas"]');
-      const tempEl = tile.querySelector('[data-field="temperature"]');
-      const humEl = tile.querySelector('[data-field="humidity"]');
-      const updatedEl = tile.querySelector('[data-field="updated"]');
-
-      if (gasEl) gasEl.textContent = gas == null ? "--" : String(gas);
-      if (tempEl) tempEl.textContent = temperature == null ? "--" : String(temperature);
-      if (humEl) humEl.textContent = humidity == null ? "--" : String(humidity);
-      if (updatedEl) updatedEl.textContent = formatTime(updatedTs);
+      setTextIfChanged(tile.querySelector('[data-field="gas"]'), gas == null ? "--" : String(gas));
+      setTextIfChanged(tile.querySelector('[data-field="temperature"]'), temperature == null ? "--" : String(temperature));
+      setTextIfChanged(tile.querySelector('[data-field="humidity"]'), humidity == null ? "--" : String(humidity));
+      setTextIfChanged(tile.querySelector('[data-field="updated"]'), formatTime(updatedTs));
 
       setBarState(tile.querySelector('[data-bar="gas"]'), "gas", gas);
       setBarState(tile.querySelector('[data-bar="temperature"]'), "temperature", temperature);
       setBarState(tile.querySelector('[data-bar="humidity"]'), "humidity", humidity);
+      setTileAvailability(tile, "live", updatedTs);
+    }
+
+    function markStaleTiles() {
+      const now = Date.now() / 1000;
+      document.querySelectorAll(".sensor-tile").forEach((tile) => {
+        const lastSeen = Number(tile.dataset.lastSeen || 0);
+        if (!lastSeen) {
+          if (tile.dataset.tileState !== "offline") setTileAvailability(tile, "offline");
+          return;
+        }
+        const nextState = now - lastSeen > staleSeconds ? "stale" : "live";
+        if (tile.dataset.tileState !== nextState) setTileAvailability(tile, nextState);
+      });
+    }
+
+    function makeOptionLabel(sensor) {
+      return `${sensor.name} (#${sensor.node_id})`;
+    }
+
+    function fillSensorSelect(selectEl) {
+      selectEl.innerHTML = sensors.map((sensor) => `<option value="${sensor.node_id}">${makeOptionLabel(sensor)}</option>`).join("");
+    }
+
+    function fillMetricSelect(selectEl) {
+      selectEl.innerHTML = metrics.map((metric) => `<option value="${metric.field}">${metric.label}</option>`).join("");
+    }
+
+    function fillMetricChecks(container) {
+      container.innerHTML = metrics.map((metric) => `
+        <label class="flex items-center gap-1">
+          <input type="checkbox" value="${metric.field}" checked class="metric-check rounded border-slate-300 text-slate-950">
+          <span>${metric.label}</span>
+        </label>
+      `).join("");
+    }
+
+    function selectedMetrics(container) {
+      const fields = [...container.querySelectorAll(".metric-check:checked")].map((input) => input.value);
+      return fields.length ? fields : [metrics[0].field];
+    }
+
+    function metricByField(field) {
+      return metrics.find((metric) => metric.field === field) || metrics[0];
+    }
+
+    function setEmptyState(id, show) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle("hidden", !show);
+      el.classList.toggle("flex", show);
+    }
+
+    function destroyChart(chart) {
+      if (chart) chart.destroy();
+    }
+
+    function renderChart(canvasId, existingChart, rows, options) {
+      const labels = [...new Set(rows.map((row) => Number(row.ts)))].sort((a, b) => a - b);
+      const datasets = options.datasets.map((dataset, index) => ({
+        label: dataset.label,
+        data: labels.map((ts) => {
+          const row = rows.find((item) => Number(item.ts) === ts && Number(item.node_id) === Number(dataset.nodeId));
+          const value = row ? row[dataset.field] : null;
+          return value == null ? null : Number(value);
+        }),
+        borderColor: dataset.color || palette[index % palette.length],
+        backgroundColor: dataset.color || palette[index % palette.length],
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.25,
+        spanGaps: true,
+      }));
+      const hasValues = datasets.some((dataset) => dataset.data.some((value) => value !== null));
+      destroyChart(existingChart);
+      const ctx = document.getElementById(canvasId);
+      return {
+        chart: new Chart(ctx, {
+          type: "line",
+          data: { labels: labels.map(formatChartTime), datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { intersect: false, mode: "index" },
+            plugins: {
+              legend: { labels: { boxWidth: 10, font: { size: 11 } } },
+              tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y ?? "--"}` } },
+            },
+            scales: {
+              x: { ticks: { maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
+              y: { ticks: { font: { size: 10 } }, grid: { color: "#e2e8f0" } },
+            },
+          },
+        }),
+        hasValues,
+      };
+    }
+
+    function normalizeMinuteRows(rows) {
+      return rows.map((row) => ({
+        ...row,
+        ts: Number(row.minute_ts),
+        node_id: Number(row.node_id),
+      }));
+    }
+
+    function normalizeRealtimeRows(payload) {
+      const rows = [];
+      Object.entries(payload.nodes || {}).forEach(([nodeId, samples]) => {
+        samples.forEach((sample) => rows.push({ ...sample, ts: Number(sample.received_at), node_id: Number(nodeId) }));
+      });
+      return rows.sort((a, b) => a.ts - b.ts);
+    }
+
+    function buildDatasets(rows, mode, selectedNodeId, metricFields, compareMetricField) {
+      if (mode === "compare") {
+        const field = compareMetricField;
+        return sensors.map((sensor, index) => ({
+          nodeId: sensor.node_id,
+          field,
+          label: sensor.name,
+          color: palette[index % palette.length],
+        }));
+      }
+      return metricFields.map((field) => {
+        const metric = metricByField(field);
+        return {
+          nodeId: selectedNodeId,
+          field,
+          label: metric.unit ? `${metric.label} (${metric.unit})` : metric.label,
+          color: metric.color,
+        };
+      });
+    }
+
+    function currentHistoryRangeParams() {
+      const range = document.getElementById("history-range").value;
+      const toInput = document.getElementById("history-to").value;
+      const fromInput = document.getElementById("history-from").value;
+      const now = Math.floor(Date.now() / 1000);
+      if (range === "custom") {
+        return {
+          from_ts: fromInput ? Math.floor(new Date(fromInput).getTime() / 1000) : null,
+          to_ts: toInput ? Math.floor(new Date(toInput).getTime() / 1000) : null,
+        };
+      }
+      return { from_ts: now - Number(range), to_ts: now };
+    }
+
+    async function refreshHistoryChart() {
+      const mode = document.getElementById("history-mode").value;
+      const selectedNodeId = Number(document.getElementById("history-sensor").value);
+      const params = {
+        outliers: document.getElementById("history-outliers").value,
+        ...currentHistoryRangeParams(),
+      };
+      if (mode === "single") params.node_id = selectedNodeId;
+      const response = await fetch(apiUrl("/nodes/minute-history", params));
+      const rows = normalizeMinuteRows(await response.json());
+      const datasets = buildDatasets(
+        rows,
+        mode,
+        selectedNodeId,
+        selectedMetrics(document.getElementById("history-metrics")),
+        document.getElementById("history-compare-metric").value,
+      );
+      const result = renderChart("history-chart", historyChart, rows, { datasets });
+      historyChart = result.chart;
+      setEmptyState("history-empty", !result.hasValues);
+    }
+
+    async function refreshRealtimeChart() {
+      const mode = document.getElementById("realtime-mode").value;
+      const selectedNodeId = Number(document.getElementById("realtime-sensor").value);
+      const response = await fetch(apiUrl("/nodes/realtime", { window_seconds: document.getElementById("realtime-window").value }));
+      const rows = normalizeRealtimeRows(await response.json());
+      const datasets = buildDatasets(
+        rows,
+        mode,
+        selectedNodeId,
+        selectedMetrics(document.getElementById("realtime-metrics")),
+        document.getElementById("realtime-compare-metric").value,
+      );
+      const result = renderChart("realtime-chart", realtimeChart, rows, { datasets });
+      realtimeChart = result.chart;
+      setEmptyState("realtime-empty", !result.hasValues);
+    }
+
+    function updateModeVisibility(prefix) {
+      const mode = document.getElementById(`${prefix}-mode`).value;
+      document.getElementById(`${prefix}-sensor`).disabled = mode === "compare";
+      document.getElementById(`${prefix}-compare-metric`).disabled = mode === "single";
+      document.getElementById(`${prefix}-metrics`).classList.toggle("opacity-40", mode === "compare");
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
+      document.getElementById(`tab-${tab}`).classList.remove("hidden");
+      document.querySelectorAll(".tab-button").forEach((button) => {
+        const active = button.dataset.tab === tab;
+        button.classList.toggle("bg-white", active);
+        button.classList.toggle("text-slate-950", active);
+        button.classList.toggle("shadow-sm", active);
+      });
+      if (tab === "history") refreshHistoryChart();
+      if (tab === "realtime") refreshRealtimeChart();
+    }
+
+    function initControls() {
+      ["history", "realtime"].forEach((prefix) => {
+        fillSensorSelect(document.getElementById(`${prefix}-sensor`));
+        fillMetricSelect(document.getElementById(`${prefix}-compare-metric`));
+        fillMetricChecks(document.getElementById(`${prefix}-metrics`));
+        updateModeVisibility(prefix);
+        document.getElementById(`${prefix}-mode`).addEventListener("change", () => {
+          updateModeVisibility(prefix);
+          prefix === "history" ? refreshHistoryChart() : refreshRealtimeChart();
+        });
+        document.getElementById(`${prefix}-sensor`).addEventListener("change", () => prefix === "history" ? refreshHistoryChart() : refreshRealtimeChart());
+        document.getElementById(`${prefix}-compare-metric`).addEventListener("change", () => prefix === "history" ? refreshHistoryChart() : refreshRealtimeChart());
+        document.getElementById(`${prefix}-metrics`).addEventListener("change", () => prefix === "history" ? refreshHistoryChart() : refreshRealtimeChart());
+      });
+      ["history-range", "history-from", "history-to", "history-outliers"].forEach((id) => {
+        document.getElementById(id).addEventListener("change", refreshHistoryChart);
+      });
+      document.getElementById("history-refresh").addEventListener("click", refreshHistoryChart);
+      document.getElementById("realtime-window").addEventListener("change", refreshRealtimeChart);
+      document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
     }
 
     const evtSource = new EventSource(streamUrl);
-
     evtSource.onopen = () => {
-      streamStatus.textContent = "(live)";
-      streamStatus.className = "text-green-600";
+      streamStatus.textContent = "live";
+      streamStatus.className = "rounded-full bg-emerald-100 px-2 py-1 text-emerald-700";
     };
-
     evtSource.onmessage = (event) => {
       const payload = JSON.parse(event.data);
       const serverTime = Number(payload.server_time || 0);
-
       backendClock.textContent = formatTime(serverTime);
-      if (Array.isArray(payload.nodes)) {
-        payload.nodes.forEach((node) => updateTile(node, serverTime));
-      }
+      if (Array.isArray(payload.nodes)) payload.nodes.forEach((node) => updateTile(node, serverTime));
     };
-
     evtSource.onerror = () => {
-      streamStatus.textContent = "(reconnecting...)";
-      streamStatus.className = "text-amber-600";
+      streamStatus.textContent = "reconnecting";
+      streamStatus.className = "rounded-full bg-amber-100 px-2 py-1 text-amber-700";
     };
-  </script>
 
+    initControls();
+    initTileBars();
+    switchTab("tiles");
+    markStaleTiles();
+    setInterval(markStaleTiles, 1000);
+    setInterval(() => {
+      if (!document.getElementById("tab-realtime").classList.contains("hidden")) refreshRealtimeChart();
+    }, 1000);
+  </script>
 </body>
 </html>
