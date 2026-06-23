@@ -6,14 +6,21 @@ from __future__ import annotations
 import argparse
 import asyncio
 import signal
+import sys
 import time
+from pathlib import Path
 from typing import Dict, Optional
 
-from ..ingestion.collector import BlePacketCollector
-from ..ingestion.protocol_decoder import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS, NodeState
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
-from ..config.constants import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS
+# Allow `python monitor_ble.py` when cwd is RaspberryPi/backend/app.
+if __package__ in (None, ""):
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
 
+from RaspberryPi.backend.config.constants import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS
+from RaspberryPi.backend.ingestion.collector import BlePacketCollector
+from RaspberryPi.backend.ingestion.protocol_decoder import NodeState
 PRINT_PERIOD_SECONDS = 1.0
 
 
