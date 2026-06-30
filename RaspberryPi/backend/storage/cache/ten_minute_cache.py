@@ -84,20 +84,32 @@ class TenMinuteCache:
         self._last_flush_ts = time.time()
 
     def load(self) -> None:
+        self._by_node.clear()
         if not os.path.exists(self.file_path):
             return
-        with open(self.file_path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
+
+        try:
+            with open(self.file_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except (OSError, ValueError, TypeError, UnicodeDecodeError):
+            return
+
+        if not isinstance(payload, dict):
+            return
 
         nodes = payload.get("nodes", {})
-        self._by_node.clear()
+        if not isinstance(nodes, dict):
+            return
+
         now = time.time()
         cutoff = now - self.retention_seconds
         for node_id_raw, samples in nodes.items():
+            if not isinstance(samples, list):
+                continue
             node_id = int(node_id_raw)
             node_deque: Deque[dict] = deque()
             for sample in samples:
-                if sample.get("received_at", 0) >= cutoff:
+                if isinstance(sample, dict) and sample.get("received_at", 0) >= cutoff:
                     node_deque.append(sample)
             if node_deque:
                 self._by_node[node_id] = node_deque
