@@ -10,15 +10,15 @@ from flask import Flask, Response, jsonify, render_template, request, stream_wit
 from ...services.backend_service import BackendService
 
 SENSOR_LABEL_BY_NODE_ID = {
-    3073: "C3",
-    3077: "A1",
-    3165: "C2",
-    3197: "A2",
-    16341: "A3",
-    16645: "B1",
-    16681: "B2",
-    23109: "B3",
-    36237: "C1",
+    3073: "A1",
+    3077: "A2",
+    3165: "A3",
+    3197: "B1",
+    16341: "B2",
+    16645: "B3",
+    16681: "C1",
+    23109: "C2",
+    36237: "C3",
 }
 SENSOR_LABEL_ORDER = ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"]
 LIVE_RELOAD_RELATIVE_DIRS = (
