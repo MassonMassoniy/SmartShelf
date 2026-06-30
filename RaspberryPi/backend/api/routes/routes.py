@@ -8,18 +8,8 @@ from typing import Any
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
 from ...services.backend_service import BackendService
+from ...config.constants import PROJECT_NODE_IDS
 
-SENSOR_LABEL_BY_NODE_ID = {
-    3073: "A1",
-    3077: "A2",
-    3165: "A3",
-    3197: "B1",
-    16341: "B2",
-    16645: "B3",
-    16681: "C1",
-    23109: "C2",
-    36237: "C3",
-}
 SENSOR_LABEL_ORDER = ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"]
 LIVE_RELOAD_RELATIVE_DIRS = (
     "RaspberryPi/backend",
@@ -257,7 +247,7 @@ def _sensor_sort_key(sensor: dict[str, Any]) -> tuple[int, int]:
 
 
 def _build_sensor(node_id: int) -> dict[str, Any]:
-    label = SENSOR_LABEL_BY_NODE_ID.get(node_id)
+    label = PROJECT_NODE_IDS.get(node_id)
     if label is None:
         label = f"Unmapped #{node_id}"
         name = label
@@ -275,8 +265,8 @@ def _build_sensor(node_id: int) -> dict[str, Any]:
 
 
 def _default_snapshot() -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
-    sensors = [_build_sensor(node_id) for node_id in SENSOR_LABEL_BY_NODE_ID]
-    readings = {f"node-{node_id}": _empty_reading(node_id) for node_id in SENSOR_LABEL_BY_NODE_ID}
+    sensors = [_build_sensor(node_id) for node_id in PROJECT_NODE_IDS]
+    readings = {f"node-{node_id}": _empty_reading(node_id) for node_id in PROJECT_NODE_IDS}
     sensors.sort(key=_sensor_sort_key)
     return sensors, readings
 
@@ -295,7 +285,7 @@ def _load_latest_snapshot(service: BackendService) -> tuple[list[dict[str, Any]]
         seen_node_ids.add(node_id)
         readings[sensor_id] = _map_node_reading(node)
 
-    expected_node_ids = set(SENSOR_LABEL_BY_NODE_ID.keys())
+    expected_node_ids = set(PROJECT_NODE_IDS.keys())
     sensors = [_build_sensor(node_id) for node_id in expected_node_ids | seen_node_ids]
     for node_id in expected_node_ids:
         readings.setdefault(f"node-{node_id}", _empty_reading(node_id))
