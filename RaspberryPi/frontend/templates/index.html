@@ -71,9 +71,6 @@
           <div class="mb-2 grid shrink-0 grid-cols-12 gap-2 text-xs">
             <select id="realtime-sensor" class="col-span-9 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
             <select id="realtime-window" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
-              <option value="60">Last 1m</option>
-              <option value="180">Last 3m</option>
-              <option value="300">Last 5m</option>
               <option value="600" selected>Last 10m</option>
             </select>
             <div id="realtime-metrics" class="col-span-12 flex flex-wrap items-center gap-3 rounded-xl bg-slate-100 px-3 py-1.5 font-semibold text-slate-600"></div>
@@ -91,6 +88,7 @@
     const streamUrl = {{ backend_stream_url | tojson }};
     const apiBaseUrl = {{ backend_api_base_url | default("") | tojson }};
     const staleSeconds = Number({{ stale_seconds | default(4) | tojson }});
+    const staleDisplayThresholdSeconds = staleSeconds + Math.max(1.5, staleSeconds * 0.5);
     const devLiveReloadEnabled = Boolean({{ dev_live_reload_enabled | default(false) | tojson }});
     const sensors = {{ sensors | tojson }};
     const sensorByNodeId = new Map(sensors.map((sensor) => [Number(sensor.node_id), sensor]));
@@ -181,6 +179,21 @@
       });
     }
 
+    function clearTileReading(tile, updatedTs = null) {
+      setTextIfChanged(tile.querySelector('[data-field="gas"]'), "--");
+      setTextIfChanged(tile.querySelector('[data-field="temperature"]'), "--");
+      setTextIfChanged(tile.querySelector('[data-field="humidity"]'), "--");
+      setTextIfChanged(tile.querySelector('[data-field="updated"]'), updatedTs ? formatTime(updatedTs) : "--:--:--");
+      setBarState(tile.querySelector('[data-bar="gas"]'), "gas", null);
+      setBarState(tile.querySelector('[data-bar="temperature"]'), "temperature", null);
+      setBarState(tile.querySelector('[data-bar="humidity"]'), "humidity", null);
+    }
+
+    function isFreshReading(updatedTs, referenceTs) {
+      if (!updatedTs || !referenceTs) return false;
+      return referenceTs - updatedTs <= staleDisplayThresholdSeconds;
+    }
+
     function setTileAvailability(tile, state, updatedTs = null) {
       if (updatedTs) tile.dataset.lastSeen = String(updatedTs);
       if (tile.dataset.tileState === state) return;
@@ -202,6 +215,7 @@
           statusEl.textContent = state === "stale" ? "Stale" : "Offline";
           statusEl.className = "rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500";
         }
+        clearTileReading(tile, updatedTs);
       }
     }
 
@@ -213,7 +227,13 @@
       const gas = node.voc_index;
       const temperature = node.temperature_c;
       const humidity = node.humidity_rh;
-      const updatedTs = Number(node.received_at || serverTime || 0);
+      const updatedTs = Number(node.received_at || 0);
+      const referenceTs = Number(serverTime || (Date.now() / 1000));
+
+      if (!isFreshReading(updatedTs, referenceTs)) {
+        setTileAvailability(tile, "stale", updatedTs || null);
+        return;
+      }
 
       setTextIfChanged(tile.querySelector('[data-field="gas"]'), gas == null ? "--" : String(gas));
       setTextIfChanged(tile.querySelector('[data-field="temperature"]'), temperature == null ? "--" : String(temperature));
@@ -234,8 +254,8 @@
           if (tile.dataset.tileState !== "offline") setTileAvailability(tile, "offline");
           return;
         }
-        const nextState = now - lastSeen > staleSeconds ? "stale" : "live";
-        if (tile.dataset.tileState !== nextState) setTileAvailability(tile, nextState);
+        const nextState = now - lastSeen > staleDisplayThresholdSeconds ? "stale" : "live";
+        if (tile.dataset.tileState !== nextState) setTileAvailability(tile, nextState, lastSeen);
       });
     }
 
@@ -486,11 +506,15 @@
       return params;
     }
 
+    function getRealtimeWindowSeconds() {
+      return 600;
+    }
+
     function startRealtimeStream() {
       closeRealtimeStream();
       latestRealtimeRows = [];
       const source = new EventSource(
-        apiUrl("/nodes/realtime/stream", { window_seconds: document.getElementById("realtime-window").value })
+        apiUrl("/nodes/realtime/stream", { window_seconds: getRealtimeWindowSeconds() })
       );
       realtimeStream = source;
       source.onmessage = (event) => {
@@ -552,7 +576,6 @@
       ["history-range", "history-from", "history-to", "history-outliers"].forEach((id) => {
         document.getElementById(id).addEventListener("change", refreshHistoryChart);
       });
-      document.getElementById("realtime-window").addEventListener("change", () => refreshRealtimeChart({ restartStream: true }));
       document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
     }
 

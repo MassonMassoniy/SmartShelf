@@ -191,7 +191,7 @@ class BackendService:
         self.storage.stop()
 
     def get_latest_nodes(self) -> List[dict]:
-        latest = self.cache.latest_by_node()
+        latest = self.cache.latest_by_node(max_age_seconds=self.stale_seconds)
         return [latest[node_id] for node_id in sorted(latest.keys())]
 
     def get_realtime_window(self, window_seconds: int) -> Dict[int, List[dict]]:
