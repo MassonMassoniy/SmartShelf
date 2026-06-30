@@ -90,7 +90,7 @@ class SQLiteStorage:
         )
         self.conn.commit()
 
-    def upsert_minute_average(self, table: str, row: dict) -> None:
+    def upsert_minute_average(self, table: str, row: dict, auto_commit: bool = True) -> None:
         assert self.conn is not None
         self.conn.execute(
             f"""
@@ -123,7 +123,8 @@ class SQLiteStorage:
             """,
             row,
         )
-        self.conn.commit()
+        if auto_commit:
+            self.conn.commit()
 
     def upsert_node_health(
         self,
@@ -133,6 +134,7 @@ class SQLiteStorage:
         dropped_sequences_total: int,
         address: str,
         name: str,
+        auto_commit: bool = True,
     ) -> None:
         assert self.conn is not None
         self.conn.execute(
@@ -149,6 +151,11 @@ class SQLiteStorage:
             """,
             (node_id, last_seen, last_sequence, dropped_sequences_total, address, name),
         )
+        if auto_commit:
+            self.conn.commit()
+
+    def commit(self) -> None:
+        assert self.conn is not None
         self.conn.commit()
 
     def get_minute_history(

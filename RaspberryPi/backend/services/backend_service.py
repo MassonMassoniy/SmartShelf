@@ -84,6 +84,8 @@ class BackendService:
 
         self.decode_errors = 0
         self._minute_samples: Dict[tuple[int, int], List[dict]] = defaultdict(list)
+        self._last_db_flush_minute_ts = minute_bucket(time.time())
+        self._last_node_health_flush_ts = time.time()
         self._persist_task: Optional[asyncio.Task] = None
         self._running = False
 
@@ -112,19 +114,15 @@ class BackendService:
         key = (bucket, event.packet.node_id)
         self._minute_samples[key].append(sample)
 
-        node_state = self.collector.nodes[event.packet.node_id]
-        self.storage.upsert_node_health(
-            node_id=event.packet.node_id,
-            last_seen=node_state.last_seen,
-            last_sequence=node_state.packet.sequence,
-            dropped_sequences_total=node_state.dropped_sequences,
-            address=node_state.address,
-            name=node_state.name,
-        )
-
     async def _periodic_maintenance(self) -> None:
         while self._running:
-            self.flush_finished_minutes()
+            current_bucket = minute_bucket(time.time())
+            if current_bucket > self._last_db_flush_minute_ts:
+                db_wrote = self.flush_finished_minutes(current_bucket=current_bucket)
+                db_wrote = self.flush_latest_node_health(current_time=time.time()) or db_wrote
+                if db_wrote:
+                    self.storage.commit()
+                self._last_db_flush_minute_ts = current_bucket
             self.cache.maybe_flush()
             await asyncio.sleep(1)
 
@@ -152,9 +150,11 @@ class BackendService:
             row[field] = _compute_mean(values)
         return row
 
-    def flush_finished_minutes(self) -> None:
-        current_bucket = minute_bucket(time.time())
+    def flush_finished_minutes(self, current_bucket: Optional[int] = None) -> bool:
+        if current_bucket is None:
+            current_bucket = minute_bucket(time.time())
         finished_keys = [key for key in self._minute_samples.keys() if key[0] < current_bucket]
+        wrote = False
         for minute_ts, node_id in finished_keys:
             samples = self._minute_samples.pop((minute_ts, node_id))
             if not samples:
@@ -171,8 +171,33 @@ class BackendService:
                 samples=samples,
                 use_outlier_filter=True,
             )
-            self.storage.upsert_minute_average(WITH_OUTLIERS_TABLE, include_row)
-            self.storage.upsert_minute_average(NO_OUTLIERS_TABLE, exclude_row)
+            self.storage.upsert_minute_average(WITH_OUTLIERS_TABLE, include_row, auto_commit=False)
+            self.storage.upsert_minute_average(NO_OUTLIERS_TABLE, exclude_row, auto_commit=False)
+            wrote = True
+        return wrote
+
+    def flush_latest_node_health(self, current_time: Optional[float] = None) -> bool:
+        if current_time is None:
+            current_time = time.time()
+        wrote = False
+        for node_id in sorted(self.collector.nodes.keys()):
+            if not self._is_allowed_node(node_id):
+                continue
+            node_state = self.collector.nodes[node_id]
+            if node_state.last_seen <= self._last_node_health_flush_ts:
+                continue
+            self.storage.upsert_node_health(
+                node_id=node_id,
+                last_seen=node_state.last_seen,
+                last_sequence=node_state.packet.sequence,
+                dropped_sequences_total=node_state.dropped_sequences,
+                address=node_state.address,
+                name=node_state.name,
+                auto_commit=False,
+            )
+            wrote = True
+        self._last_node_health_flush_ts = current_time
+        return wrote
 
     async def start(self) -> None:
         if self._running:
@@ -194,7 +219,10 @@ class BackendService:
             except asyncio.CancelledError:
                 pass
             self._persist_task = None
-        self.flush_finished_minutes()
+        db_wrote = self.flush_finished_minutes()
+        db_wrote = self.flush_latest_node_health() or db_wrote
+        if db_wrote:
+            self.storage.commit()
         self.cache.flush()
         await self.collector.stop()
         self.storage.stop()
