@@ -43,12 +43,7 @@
       <section id="tab-history" class="tab-panel hidden h-full">
         <div class="flex h-full flex-col rounded-2xl border border-white/20 bg-white/95 p-2 shadow-xl shadow-slate-950/20">
           <div class="mb-2 grid shrink-0 grid-cols-12 gap-2 text-xs">
-            <select id="history-mode" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
-              <option value="single">One Sensor</option>
-              <option value="compare">All Sensors</option>
-            </select>
-            <select id="history-sensor" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
-            <select id="history-compare-metric" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
+            <select id="history-sensor" class="col-span-4 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
             <select id="history-range" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
               <option value="3600">Last 1h</option>
               <option value="21600">Last 6h</option>
@@ -74,12 +69,7 @@
       <section id="tab-realtime" class="tab-panel hidden h-full">
         <div class="flex h-full flex-col rounded-2xl border border-white/20 bg-white/95 p-2 shadow-xl shadow-slate-950/20">
           <div class="mb-2 grid shrink-0 grid-cols-12 gap-2 text-xs">
-            <select id="realtime-mode" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
-              <option value="single">One Sensor</option>
-              <option value="compare">All Sensors</option>
-            </select>
-            <select id="realtime-sensor" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
-            <select id="realtime-compare-metric" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
+            <select id="realtime-sensor" class="col-span-9 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
             <select id="realtime-window" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
               <option value="60">Last 1m</option>
               <option value="180">Last 3m</option>
@@ -112,6 +102,7 @@
     let latestHistoryRows = [];
     let latestRealtimeRows = [];
     let activeTab = "tiles";
+    const chartHoverState = { history: false, realtime: false };
 
     const metrics = [
       { field: "temperature_c", tileField: "temperature", label: "Temperature", unit: "°C", color: "#ef4444" },
@@ -119,6 +110,10 @@
       { field: "voc_index", tileField: "gas", label: "VOC Index", unit: "", color: "#10b981" },
     ];
     const palette = ["#0891b2", "#7c3aed", "#dc2626", "#16a34a", "#ea580c", "#2563eb", "#be123c", "#4f46e5", "#0f766e", "#64748b"];
+    const metricSelectionState = {
+      history: { single: new Set(metrics.map((metric) => metric.field)), all: metrics[0].field },
+      realtime: { single: new Set(metrics.map((metric) => metric.field)), all: metrics[0].field },
+    };
 
     function formatTime(epochSeconds) {
       if (!epochSeconds) return "--:--:--";
@@ -249,24 +244,66 @@
     }
 
     function fillSensorSelect(selectEl) {
-      selectEl.innerHTML = sensors.map((sensor) => `<option value="${sensor.node_id}">${makeOptionLabel(sensor)}</option>`).join("");
+      const sensorOptions = sensors.map((sensor) => `<option value="${sensor.node_id}">${makeOptionLabel(sensor)}</option>`);
+      selectEl.innerHTML = [`<option value="all">All Sensors</option>`, ...sensorOptions].join("");
+      selectEl.value = "all";
     }
 
-    function fillMetricSelect(selectEl) {
-      selectEl.innerHTML = metrics.map((metric) => `<option value="${metric.field}">${metric.label}</option>`).join("");
+    function isAllSensorsSelected(prefix) {
+      return document.getElementById(`${prefix}-sensor`).value === "all";
     }
 
-    function fillMetricChecks(container) {
-      container.innerHTML = metrics.map((metric) => `
-        <label class="flex items-center gap-1">
-          <input type="checkbox" value="${metric.field}" checked class="metric-check rounded border-slate-300 text-slate-950">
-          <span>${metric.label}</span>
-        </label>
-      `).join("");
+    function getSelectedNodeId(prefix) {
+      const value = document.getElementById(`${prefix}-sensor`).value;
+      return value === "all" ? null : Number(value);
+    }
+
+    function renderMetricControls(prefix) {
+      const container = document.getElementById(`${prefix}-metrics`);
+      const isAllSensors = isAllSensorsSelected(prefix);
+      const state = metricSelectionState[prefix];
+
+      if (isAllSensors) {
+        const selected = state.all || metrics[0].field;
+        container.innerHTML = metrics.map((metric) => `
+          <label class="flex items-center gap-1">
+            <input
+              type="radio"
+              name="${prefix}-metric-radio"
+              value="${metric.field}"
+              ${metric.field === selected ? "checked" : ""}
+              class="metric-option rounded-full border-slate-300 text-slate-950"
+            >
+            <span>${metric.label}</span>
+          </label>
+        `).join("");
+      } else {
+        container.innerHTML = metrics.map((metric) => `
+          <label class="flex items-center gap-1">
+            <input
+              type="checkbox"
+              value="${metric.field}"
+              ${state.single.has(metric.field) ? "checked" : ""}
+              class="metric-option rounded border-slate-300 text-slate-950"
+            >
+            <span>${metric.label}</span>
+          </label>
+        `).join("");
+      }
+    }
+
+    function updateMetricSelectionState(prefix) {
+      const container = document.getElementById(`${prefix}-metrics`);
+      const selected = [...container.querySelectorAll(".metric-option:checked")].map((input) => input.value);
+      if (isAllSensorsSelected(prefix)) {
+        metricSelectionState[prefix].all = selected[0] || metrics[0].field;
+      } else {
+        metricSelectionState[prefix].single = new Set(selected.length ? selected : [metrics[0].field]);
+      }
     }
 
     function selectedMetrics(container) {
-      const fields = [...container.querySelectorAll(".metric-check:checked")].map((input) => input.value);
+      const fields = [...container.querySelectorAll(".metric-option:checked")].map((input) => input.value);
       return fields.length ? fields : [metrics[0].field];
     }
 
@@ -285,7 +322,37 @@
       if (chart) chart.destroy();
     }
 
-    function renderChart(canvasId, existingChart, rows, options) {
+    function captureActiveTooltipState(chart) {
+      const active = chart.getActiveElements();
+      if (!active || !active.length) return null;
+      const first = active[0];
+      const dataset = chart.data.datasets[first.datasetIndex];
+      const rawLabels = chart.$rawLabels || [];
+      return {
+        ts: rawLabels[first.index],
+        datasetLabel: dataset ? dataset.label : null,
+      };
+    }
+
+    function restoreActiveTooltipState(chart, state) {
+      if (!state) return;
+      const rawLabels = chart.$rawLabels || [];
+      const pointIndex = rawLabels.indexOf(state.ts);
+      if (pointIndex === -1) return;
+      let datasetIndex = chart.data.datasets.findIndex((dataset) => dataset.label === state.datasetLabel);
+      if (datasetIndex === -1) datasetIndex = 0;
+      if (!chart.data.datasets[datasetIndex]) return;
+      if (pointIndex >= chart.data.datasets[datasetIndex].data.length) return;
+
+      const active = [{ datasetIndex, index: pointIndex }];
+      const point = chart.getDatasetMeta(datasetIndex).data[pointIndex];
+      const position = point && point.getCenterPoint ? point.getCenterPoint() : { x: 0, y: 0 };
+      chart.setActiveElements(active);
+      chart.tooltip.setActiveElements(active, position);
+      chart.update("none");
+    }
+
+    function renderChart(canvasId, existingChart, rows, options, hoverKey) {
       const labels = [...new Set(rows.map((row) => Number(row.ts)))].sort((a, b) => a - b);
       const datasets = options.datasets.map((dataset, index) => ({
         label: dataset.label,
@@ -302,10 +369,9 @@
         spanGaps: true,
       }));
       const hasValues = datasets.some((dataset) => dataset.data.some((value) => value !== null));
-      destroyChart(existingChart);
-      const ctx = document.getElementById(canvasId);
-      return {
-        chart: new Chart(ctx, {
+      if (!existingChart) {
+        const ctx = document.getElementById(canvasId);
+        const chart = new Chart(ctx, {
           type: "line",
           data: { labels: labels.map(formatChartTime), datasets },
           options: {
@@ -322,9 +388,18 @@
               y: { ticks: { font: { size: 10 } }, grid: { color: "#e2e8f0" } },
             },
           },
-        }),
-        hasValues,
-      };
+        });
+        chart.$rawLabels = labels;
+        return { chart, hasValues };
+      }
+
+      const tooltipState = chartHoverState[hoverKey] ? captureActiveTooltipState(existingChart) : null;
+      existingChart.data.labels = labels.map(formatChartTime);
+      existingChart.data.datasets = datasets;
+      existingChart.$rawLabels = labels;
+      existingChart.update("none");
+      if (chartHoverState[hoverKey]) restoreActiveTooltipState(existingChart, tooltipState);
+      return { chart: existingChart, hasValues };
     }
 
     function normalizeMinuteRows(rows) {
@@ -343,9 +418,9 @@
       return rows.sort((a, b) => a.ts - b.ts);
     }
 
-    function buildDatasets(rows, mode, selectedNodeId, metricFields, compareMetricField) {
-      if (mode === "compare") {
-        const field = compareMetricField;
+    function buildDatasets(selectedNodeId, metricFields) {
+      if (selectedNodeId == null) {
+        const field = metricFields[0];
         return sensors.map((sensor, index) => ({
           nodeId: sensor.node_id,
           field,
@@ -379,31 +454,17 @@
     }
 
     function renderHistoryChartFromRows(rows) {
-      const mode = document.getElementById("history-mode").value;
-      const selectedNodeId = Number(document.getElementById("history-sensor").value);
-      const datasets = buildDatasets(
-        rows,
-        mode,
-        selectedNodeId,
-        selectedMetrics(document.getElementById("history-metrics")),
-        document.getElementById("history-compare-metric").value,
-      );
-      const result = renderChart("history-chart", historyChart, rows, { datasets });
+      const selectedNodeId = getSelectedNodeId("history");
+      const datasets = buildDatasets(selectedNodeId, selectedMetrics(document.getElementById("history-metrics")));
+      const result = renderChart("history-chart", historyChart, rows, { datasets }, "history");
       historyChart = result.chart;
       setEmptyState("history-empty", !result.hasValues);
     }
 
     function renderRealtimeChartFromRows(rows) {
-      const mode = document.getElementById("realtime-mode").value;
-      const selectedNodeId = Number(document.getElementById("realtime-sensor").value);
-      const datasets = buildDatasets(
-        rows,
-        mode,
-        selectedNodeId,
-        selectedMetrics(document.getElementById("realtime-metrics")),
-        document.getElementById("realtime-compare-metric").value,
-      );
-      const result = renderChart("realtime-chart", realtimeChart, rows, { datasets });
+      const selectedNodeId = getSelectedNodeId("realtime");
+      const datasets = buildDatasets(selectedNodeId, selectedMetrics(document.getElementById("realtime-metrics")));
+      const result = renderChart("realtime-chart", realtimeChart, rows, { datasets }, "realtime");
       realtimeChart = result.chart;
       setEmptyState("realtime-empty", !result.hasValues);
     }
@@ -416,13 +477,12 @@
     }
 
     function currentHistoryQueryParams() {
-      const mode = document.getElementById("history-mode").value;
-      const selectedNodeId = Number(document.getElementById("history-sensor").value);
+      const selectedNodeId = getSelectedNodeId("history");
       const params = {
         outliers: document.getElementById("history-outliers").value,
         ...currentHistoryRangeParams(),
       };
-      if (mode === "single") params.node_id = selectedNodeId;
+      if (selectedNodeId !== null) params.node_id = selectedNodeId;
       return params;
     }
 
@@ -454,13 +514,6 @@
       renderRealtimeChartFromRows(latestRealtimeRows);
     }
 
-    function updateModeVisibility(prefix) {
-      const mode = document.getElementById(`${prefix}-mode`).value;
-      document.getElementById(`${prefix}-sensor`).disabled = mode === "compare";
-      document.getElementById(`${prefix}-compare-metric`).disabled = mode === "single";
-      document.getElementById(`${prefix}-metrics`).classList.toggle("opacity-40", mode === "compare");
-    }
-
     function switchTab(tab) {
       activeTab = tab;
       document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
@@ -484,39 +537,40 @@
     function initControls() {
       ["history", "realtime"].forEach((prefix) => {
         fillSensorSelect(document.getElementById(`${prefix}-sensor`));
-        fillMetricSelect(document.getElementById(`${prefix}-compare-metric`));
-        fillMetricChecks(document.getElementById(`${prefix}-metrics`));
-        updateModeVisibility(prefix);
-        document.getElementById(`${prefix}-mode`).addEventListener("change", () => {
-          updateModeVisibility(prefix);
-          if (prefix === "history") {
-            refreshHistoryChart();
-          } else {
-            refreshRealtimeChart();
-          }
-        });
+        renderMetricControls(prefix);
         document.getElementById(`${prefix}-sensor`).addEventListener("change", () => {
-          if (prefix === "history") {
-            if (document.getElementById("history-mode").value === "single") refreshHistoryChart();
-            else renderHistoryChartFromRows(latestHistoryRows);
-          } else {
-            refreshRealtimeChart();
-          }
+          renderMetricControls(prefix);
+          if (prefix === "history") refreshHistoryChart();
+          else refreshRealtimeChart();
         });
-        document.getElementById(`${prefix}-compare-metric`).addEventListener(
-          "change",
-          () => (prefix === "history" ? renderHistoryChartFromRows(latestHistoryRows) : refreshRealtimeChart())
-        );
-        document.getElementById(`${prefix}-metrics`).addEventListener(
-          "change",
-          () => (prefix === "history" ? renderHistoryChartFromRows(latestHistoryRows) : refreshRealtimeChart())
-        );
+        document.getElementById(`${prefix}-metrics`).addEventListener("change", () => {
+          updateMetricSelectionState(prefix);
+          if (prefix === "history") renderHistoryChartFromRows(latestHistoryRows);
+          else refreshRealtimeChart();
+        });
       });
       ["history-range", "history-from", "history-to", "history-outliers"].forEach((id) => {
         document.getElementById(id).addEventListener("change", refreshHistoryChart);
       });
       document.getElementById("realtime-window").addEventListener("change", () => refreshRealtimeChart({ restartStream: true }));
       document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
+    }
+
+    function initChartHoverTracking() {
+      const pairs = [
+        { key: "history", id: "history-chart" },
+        { key: "realtime", id: "realtime-chart" },
+      ];
+      pairs.forEach((pair) => {
+        const canvas = document.getElementById(pair.id);
+        if (!canvas) return;
+        canvas.addEventListener("mouseenter", () => {
+          chartHoverState[pair.key] = true;
+        });
+        canvas.addEventListener("mouseleave", () => {
+          chartHoverState[pair.key] = false;
+        });
+      });
     }
 
     const evtSource = new EventSource(streamUrl);
@@ -543,6 +597,7 @@
     }
 
     initControls();
+    initChartHoverTracking();
     initTileBars();
     switchTab("tiles");
     markStaleTiles();
