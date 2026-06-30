@@ -4,7 +4,7 @@ import json
 import os
 import time
 from collections import deque
-from typing import Deque, Dict, List
+from typing import Deque, Dict, List, Optional
 
 
 class TenMinuteCache:
@@ -37,21 +37,30 @@ class TenMinuteCache:
             if not node_deque:
                 del self._by_node[node_id]
 
-    def get_window(self, window_seconds: int) -> Dict[int, List[dict]]:
+    def get_window(self, window_seconds: int, max_age_seconds: Optional[float] = None) -> Dict[int, List[dict]]:
         now = time.time()
         cutoff = now - max(1, window_seconds)
+        freshness_cutoff = None if max_age_seconds is None else now - max(0.0, max_age_seconds)
         out: Dict[int, List[dict]] = {}
         for node_id, node_deque in self._by_node.items():
-            values = [item for item in node_deque if item["received_at"] >= cutoff]
+            values = [
+                item
+                for item in node_deque
+                if item["received_at"] >= cutoff
+                and (freshness_cutoff is None or item["received_at"] >= freshness_cutoff)
+            ]
             if values:
                 out[node_id] = values
         return out
 
-    def latest_by_node(self) -> Dict[int, dict]:
+    def latest_by_node(self, max_age_seconds: Optional[float] = None) -> Dict[int, dict]:
+        freshness_cutoff = None if max_age_seconds is None else time.time() - max(0.0, max_age_seconds)
         out: Dict[int, dict] = {}
         for node_id, node_deque in self._by_node.items():
             if node_deque:
-                out[node_id] = node_deque[-1]
+                latest = node_deque[-1]
+                if freshness_cutoff is None or latest["received_at"] >= freshness_cutoff:
+                    out[node_id] = latest
         return out
 
     def maybe_flush(self) -> None:

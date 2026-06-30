@@ -43,12 +43,7 @@
       <section id="tab-history" class="tab-panel hidden h-full">
         <div class="flex h-full flex-col rounded-2xl border border-white/20 bg-white/95 p-2 shadow-xl shadow-slate-950/20">
           <div class="mb-2 grid shrink-0 grid-cols-12 gap-2 text-xs">
-            <select id="history-mode" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
-              <option value="single">One Sensor</option>
-              <option value="compare">All Sensors</option>
-            </select>
-            <select id="history-sensor" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
-            <select id="history-compare-metric" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
+            <select id="history-sensor" class="col-span-4 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
             <select id="history-range" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
               <option value="3600">Last 1h</option>
               <option value="21600">Last 6h</option>
@@ -58,12 +53,11 @@
             </select>
             <input id="history-from" type="datetime-local" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold" />
             <input id="history-to" type="datetime-local" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold" />
-            <div id="history-metrics" class="col-span-8 flex flex-wrap items-center gap-3 rounded-xl bg-slate-100 px-3 py-1.5 font-semibold text-slate-600"></div>
+            <div id="history-metrics" class="col-span-10 flex flex-wrap items-center gap-3 rounded-xl bg-slate-100 px-3 py-1.5 font-semibold text-slate-600"></div>
             <select id="history-outliers" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
               <option value="include">Include outliers</option>
               <option value="exclude">Exclude outliers</option>
             </select>
-            <button id="history-refresh" class="col-span-2 rounded-xl bg-slate-950 px-3 py-1.5 font-black text-white">Refresh</button>
           </div>
           <div class="relative min-h-0 flex-1 rounded-2xl bg-slate-50 p-2">
             <canvas id="history-chart"></canvas>
@@ -75,15 +69,9 @@
       <section id="tab-realtime" class="tab-panel hidden h-full">
         <div class="flex h-full flex-col rounded-2xl border border-white/20 bg-white/95 p-2 shadow-xl shadow-slate-950/20">
           <div class="mb-2 grid shrink-0 grid-cols-12 gap-2 text-xs">
-            <select id="realtime-mode" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
-              <option value="single">One Sensor</option>
-              <option value="compare">All Sensors</option>
-            </select>
-            <select id="realtime-sensor" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
-            <select id="realtime-compare-metric" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
+            <select id="realtime-sensor" class="col-span-9 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
             <select id="realtime-window" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
               <option value="60">Last 1m</option>
-              <option value="180">Last 3m</option>
               <option value="300">Last 5m</option>
               <option value="600" selected>Last 10m</option>
             </select>
@@ -102,19 +90,31 @@
     const streamUrl = {{ backend_stream_url | tojson }};
     const apiBaseUrl = {{ backend_api_base_url | default("") | tojson }};
     const staleSeconds = Number({{ stale_seconds | default(4) | tojson }});
+    const staleDisplayThresholdSeconds = staleSeconds + Math.max(1.5, staleSeconds * 0.5);
+    const devLiveReloadEnabled = Boolean({{ dev_live_reload_enabled | default(false) | tojson }});
     const sensors = {{ sensors | tojson }};
     const sensorByNodeId = new Map(sensors.map((sensor) => [Number(sensor.node_id), sensor]));
     const backendClock = document.getElementById("backend-clock");
     const streamStatus = document.getElementById("stream-status");
     let historyChart = null;
     let realtimeChart = null;
+    let realtimeStream = null;
+    let latestHistoryRows = [];
+    let latestRealtimeRows = [];
+    let activeTab = "tiles";
+    const chartHoverState = { history: false, realtime: false };
 
     const metrics = [
       { field: "temperature_c", tileField: "temperature", label: "Temperature", unit: "°C", color: "#ef4444" },
       { field: "humidity_rh", tileField: "humidity", label: "Humidity", unit: "%", color: "#0ea5e9" },
       { field: "voc_index", tileField: "gas", label: "VOC Index", unit: "", color: "#10b981" },
     ];
+    const emaBaseAlpha = 1;
     const palette = ["#0891b2", "#7c3aed", "#dc2626", "#16a34a", "#ea580c", "#2563eb", "#be123c", "#4f46e5", "#0f766e", "#64748b"];
+    const metricSelectionState = {
+      history: { single: new Set(metrics.map((metric) => metric.field)), all: metrics[0].field },
+      realtime: { single: new Set(metrics.map((metric) => metric.field)), all: metrics[0].field },
+    };
 
     function formatTime(epochSeconds) {
       if (!epochSeconds) return "--:--:--";
@@ -182,6 +182,21 @@
       });
     }
 
+    function clearTileReading(tile, updatedTs = null) {
+      setTextIfChanged(tile.querySelector('[data-field="gas"]'), "--");
+      setTextIfChanged(tile.querySelector('[data-field="temperature"]'), "--");
+      setTextIfChanged(tile.querySelector('[data-field="humidity"]'), "--");
+      setTextIfChanged(tile.querySelector('[data-field="updated"]'), updatedTs ? formatTime(updatedTs) : "--:--:--");
+      setBarState(tile.querySelector('[data-bar="gas"]'), "gas", null);
+      setBarState(tile.querySelector('[data-bar="temperature"]'), "temperature", null);
+      setBarState(tile.querySelector('[data-bar="humidity"]'), "humidity", null);
+    }
+
+    function isFreshReading(updatedTs, referenceTs) {
+      if (!updatedTs || !referenceTs) return false;
+      return referenceTs - updatedTs <= staleDisplayThresholdSeconds;
+    }
+
     function setTileAvailability(tile, state, updatedTs = null) {
       if (updatedTs) tile.dataset.lastSeen = String(updatedTs);
       if (tile.dataset.tileState === state) return;
@@ -203,6 +218,7 @@
           statusEl.textContent = state === "stale" ? "Stale" : "Offline";
           statusEl.className = "rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500";
         }
+        clearTileReading(tile, updatedTs);
       }
     }
 
@@ -214,7 +230,13 @@
       const gas = node.voc_index;
       const temperature = node.temperature_c;
       const humidity = node.humidity_rh;
-      const updatedTs = Number(node.received_at || serverTime || 0);
+      const updatedTs = Number(node.received_at || 0);
+      const referenceTs = Number(serverTime || (Date.now() / 1000));
+
+      if (!isFreshReading(updatedTs, referenceTs)) {
+        setTileAvailability(tile, "stale", updatedTs || null);
+        return;
+      }
 
       setTextIfChanged(tile.querySelector('[data-field="gas"]'), gas == null ? "--" : String(gas));
       setTextIfChanged(tile.querySelector('[data-field="temperature"]'), temperature == null ? "--" : String(temperature));
@@ -235,8 +257,8 @@
           if (tile.dataset.tileState !== "offline") setTileAvailability(tile, "offline");
           return;
         }
-        const nextState = now - lastSeen > staleSeconds ? "stale" : "live";
-        if (tile.dataset.tileState !== nextState) setTileAvailability(tile, nextState);
+        const nextState = now - lastSeen > staleDisplayThresholdSeconds ? "stale" : "live";
+        if (tile.dataset.tileState !== nextState) setTileAvailability(tile, nextState, lastSeen);
       });
     }
 
@@ -245,24 +267,66 @@
     }
 
     function fillSensorSelect(selectEl) {
-      selectEl.innerHTML = sensors.map((sensor) => `<option value="${sensor.node_id}">${makeOptionLabel(sensor)}</option>`).join("");
+      const sensorOptions = sensors.map((sensor) => `<option value="${sensor.node_id}">${makeOptionLabel(sensor)}</option>`);
+      selectEl.innerHTML = [`<option value="all">All Sensors</option>`, ...sensorOptions].join("");
+      selectEl.value = "all";
     }
 
-    function fillMetricSelect(selectEl) {
-      selectEl.innerHTML = metrics.map((metric) => `<option value="${metric.field}">${metric.label}</option>`).join("");
+    function isAllSensorsSelected(prefix) {
+      return document.getElementById(`${prefix}-sensor`).value === "all";
     }
 
-    function fillMetricChecks(container) {
-      container.innerHTML = metrics.map((metric) => `
-        <label class="flex items-center gap-1">
-          <input type="checkbox" value="${metric.field}" checked class="metric-check rounded border-slate-300 text-slate-950">
-          <span>${metric.label}</span>
-        </label>
-      `).join("");
+    function getSelectedNodeId(prefix) {
+      const value = document.getElementById(`${prefix}-sensor`).value;
+      return value === "all" ? null : Number(value);
+    }
+
+    function renderMetricControls(prefix) {
+      const container = document.getElementById(`${prefix}-metrics`);
+      const isAllSensors = isAllSensorsSelected(prefix);
+      const state = metricSelectionState[prefix];
+
+      if (isAllSensors) {
+        const selected = state.all || metrics[0].field;
+        container.innerHTML = metrics.map((metric) => `
+          <label class="flex items-center gap-1">
+            <input
+              type="radio"
+              name="${prefix}-metric-radio"
+              value="${metric.field}"
+              ${metric.field === selected ? "checked" : ""}
+              class="metric-option rounded-full border-slate-300 text-slate-950"
+            >
+            <span>${metric.label}</span>
+          </label>
+        `).join("");
+      } else {
+        container.innerHTML = metrics.map((metric) => `
+          <label class="flex items-center gap-1">
+            <input
+              type="checkbox"
+              value="${metric.field}"
+              ${state.single.has(metric.field) ? "checked" : ""}
+              class="metric-option rounded border-slate-300 text-slate-950"
+            >
+            <span>${metric.label}</span>
+          </label>
+        `).join("");
+      }
+    }
+
+    function updateMetricSelectionState(prefix) {
+      const container = document.getElementById(`${prefix}-metrics`);
+      const selected = [...container.querySelectorAll(".metric-option:checked")].map((input) => input.value);
+      if (isAllSensorsSelected(prefix)) {
+        metricSelectionState[prefix].all = selected[0] || metrics[0].field;
+      } else {
+        metricSelectionState[prefix].single = new Set(selected.length ? selected : [metrics[0].field]);
+      }
     }
 
     function selectedMetrics(container) {
-      const fields = [...container.querySelectorAll(".metric-check:checked")].map((input) => input.value);
+      const fields = [...container.querySelectorAll(".metric-option:checked")].map((input) => input.value);
       return fields.length ? fields : [metrics[0].field];
     }
 
@@ -281,15 +345,170 @@
       if (chart) chart.destroy();
     }
 
-    function renderChart(canvasId, existingChart, rows, options) {
+    function isEmaSmoothedField(field) {
+      return field === "temperature_c" || field === "humidity_rh";
+    }
+
+    function median(values) {
+      if (!values.length) return 1;
+      const ordered = [...values].sort((a, b) => a - b);
+      const mid = Math.floor(ordered.length / 2);
+      if (ordered.length % 2 === 1) return ordered[mid];
+      return (ordered[mid - 1] + ordered[mid]) / 2;
+    }
+
+    function estimateNominalInterval(timestamps) {
+      if (timestamps.length < 2) return 1;
+      const deltas = [];
+      for (let i = 1; i < timestamps.length; i += 1) {
+        const delta = Number(timestamps[i]) - Number(timestamps[i - 1]);
+        if (delta > 0) deltas.push(delta);
+      }
+      return Math.max(1, median(deltas));
+    }
+
+    function timeWeightedAlpha(baseAlpha, deltaSeconds, nominalIntervalSeconds) {
+      const safeBase = Math.min(Math.max(Number(baseAlpha) || 0, 0), 1);
+      const safeNominal = Math.max(1, Number(nominalIntervalSeconds) || 1);
+      const ratio = Math.max(0, Number(deltaSeconds) || 0) / safeNominal;
+      // If ratio=1, alpha_t=baseAlpha; larger gaps increase alpha_t to reduce lag.
+      return 1 - Math.pow(1 - safeBase, ratio);
+    }
+
+    function applyEmaSmoothing(values, timestamps, baseAlpha) {
+      const output = new Array(values.length).fill(null);
+      const observedTimestamps = [];
+      for (let i = 0; i < values.length; i += 1) {
+        if (values[i] != null) observedTimestamps.push(Number(timestamps[i]));
+      }
+      const nominalInterval = estimateNominalInterval(observedTimestamps);
+
+      let lastEma = null;
+      let lastTs = null;
+      for (let i = 0; i < values.length; i += 1) {
+        const value = values[i];
+        if (value == null) {
+          output[i] = null;
+          continue;
+        }
+        const ts = Number(timestamps[i]);
+        if (lastEma == null || lastTs == null) {
+          // First reading is baseline: EMA0 = x0
+          lastEma = Number(value);
+          lastTs = ts;
+          output[i] = lastEma;
+          continue;
+        }
+        const deltaSeconds = Math.max(0, ts - lastTs);
+        const alphaT = timeWeightedAlpha(baseAlpha, deltaSeconds, nominalInterval);
+        lastEma = alphaT * Number(value) + (1 - alphaT) * lastEma;
+        lastTs = ts;
+        output[i] = lastEma;
+      }
+      return output;
+    }
+
+    function buildYAxisConfig(datasets) {
+      const base = {
+        ticks: { font: { size: 10 } },
+        grid: { color: "#e2e8f0" },
+      };
+      if (!datasets.length) return base;
+
+      const uniqueFields = [...new Set(datasets.map((dataset) => dataset.field))];
+      if (uniqueFields.length !== 1) return base;
+
+      const field = uniqueFields[0];
+      const scaleStep = field === "temperature_c" ? 3 : (field === "humidity_rh" ? 5 : null);
+      if (scaleStep == null) return base;
+
+      const values = datasets.flatMap((dataset) => dataset.data.filter((value) => value !== null).map(Number));
+      if (!values.length) return base;
+
+      const minValue = Math.min(...values);
+      const maxValue = Math.max(...values);
+      let minBound = Math.floor(minValue / scaleStep) * scaleStep;
+      let maxBound = Math.ceil(maxValue / scaleStep) * scaleStep;
+      if (maxBound <= minBound) maxBound = minBound + scaleStep;
+      const span = maxBound - minBound;
+      if (span < scaleStep) maxBound = minBound + scaleStep;
+      const resolvedSpan = maxBound - minBound;
+
+      const decimalStep = 0.5;
+      const maxTicksForDecimals = 12;
+      const decimalTickCount = Math.floor(resolvedSpan / decimalStep) + 1;
+      const labelStep = decimalTickCount <= maxTicksForDecimals ? decimalStep : 1;
+
+      return {
+        ...base,
+        min: minBound,
+        max: maxBound,
+        ticks: {
+          ...base.ticks,
+          stepSize: labelStep,
+          autoSkip: true,
+          callback: (raw) => {
+            const value = Number(raw);
+            if (!Number.isFinite(value)) return String(raw);
+            return Number.isInteger(value) ? String(value) : value.toFixed(1);
+          },
+        },
+      };
+    }
+
+    function buildAutoYAxisConfig() {
+      return {
+        ticks: { font: { size: 10 } },
+        grid: { color: "#e2e8f0" },
+      };
+    }
+
+    function captureActiveTooltipState(chart) {
+      const active = chart.getActiveElements();
+      if (!active || !active.length) return null;
+      const first = active[0];
+      const dataset = chart.data.datasets[first.datasetIndex];
+      const rawLabels = chart.$rawLabels || [];
+      return {
+        ts: rawLabels[first.index],
+        datasetLabel: dataset ? dataset.label : null,
+      };
+    }
+
+    function restoreActiveTooltipState(chart, state) {
+      if (!state) return;
+      const rawLabels = chart.$rawLabels || [];
+      const pointIndex = rawLabels.indexOf(state.ts);
+      if (pointIndex === -1) return;
+      let datasetIndex = chart.data.datasets.findIndex((dataset) => dataset.label === state.datasetLabel);
+      if (datasetIndex === -1) datasetIndex = 0;
+      if (!chart.data.datasets[datasetIndex]) return;
+      if (pointIndex >= chart.data.datasets[datasetIndex].data.length) return;
+
+      const active = [{ datasetIndex, index: pointIndex }];
+      const point = chart.getDatasetMeta(datasetIndex).data[pointIndex];
+      const position = point && point.getCenterPoint ? point.getCenterPoint() : { x: 0, y: 0 };
+      chart.setActiveElements(active);
+      chart.tooltip.setActiveElements(active, position);
+      chart.update("none");
+    }
+
+    function renderChart(canvasId, existingChart, rows, options, hoverKey) {
       const labels = [...new Set(rows.map((row) => Number(row.ts)))].sort((a, b) => a - b);
+      const applyEma = options.applyEma !== false;
       const datasets = options.datasets.map((dataset, index) => ({
+        field: dataset.field,
+        nodeId: dataset.nodeId,
         label: dataset.label,
-        data: labels.map((ts) => {
-          const row = rows.find((item) => Number(item.ts) === ts && Number(item.node_id) === Number(dataset.nodeId));
-          const value = row ? row[dataset.field] : null;
-          return value == null ? null : Number(value);
-        }),
+        data: (() => {
+          const rawData = labels.map((ts) => {
+            const row = rows.find((item) => Number(item.ts) === ts && Number(item.node_id) === Number(dataset.nodeId));
+            const value = row ? row[dataset.field] : null;
+            return value == null ? null : Number(value);
+          });
+          if (!applyEma || !isEmaSmoothedField(dataset.field)) return rawData;
+          return applyEmaSmoothing(rawData, labels, emaBaseAlpha);
+        })(),
         borderColor: dataset.color || palette[index % palette.length],
         backgroundColor: dataset.color || palette[index % palette.length],
         borderWidth: 2,
@@ -297,11 +516,12 @@
         tension: 0.25,
         spanGaps: true,
       }));
+      const useCustomYAxis = options.useCustomYAxis !== false;
+      const yAxisConfig = useCustomYAxis ? buildYAxisConfig(datasets) : buildAutoYAxisConfig();
       const hasValues = datasets.some((dataset) => dataset.data.some((value) => value !== null));
-      destroyChart(existingChart);
-      const ctx = document.getElementById(canvasId);
-      return {
-        chart: new Chart(ctx, {
+      if (!existingChart) {
+        const ctx = document.getElementById(canvasId);
+        const chart = new Chart(ctx, {
           type: "line",
           data: { labels: labels.map(formatChartTime), datasets },
           options: {
@@ -315,12 +535,22 @@
             },
             scales: {
               x: { ticks: { maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
-              y: { ticks: { font: { size: 10 } }, grid: { color: "#e2e8f0" } },
+              y: yAxisConfig,
             },
           },
-        }),
-        hasValues,
-      };
+        });
+        chart.$rawLabels = labels;
+        return { chart, hasValues };
+      }
+
+      const tooltipState = chartHoverState[hoverKey] ? captureActiveTooltipState(existingChart) : null;
+      existingChart.data.labels = labels.map(formatChartTime);
+      existingChart.data.datasets = datasets;
+      existingChart.$rawLabels = labels;
+      existingChart.options.scales.y = yAxisConfig;
+      existingChart.update("none");
+      if (chartHoverState[hoverKey]) restoreActiveTooltipState(existingChart, tooltipState);
+      return { chart: existingChart, hasValues };
     }
 
     function normalizeMinuteRows(rows) {
@@ -339,9 +569,9 @@
       return rows.sort((a, b) => a.ts - b.ts);
     }
 
-    function buildDatasets(rows, mode, selectedNodeId, metricFields, compareMetricField) {
-      if (mode === "compare") {
-        const field = compareMetricField;
+    function buildDatasets(selectedNodeId, metricFields) {
+      if (selectedNodeId == null) {
+        const field = metricFields[0];
         return sensors.map((sensor, index) => ({
           nodeId: sensor.node_id,
           field,
@@ -374,53 +604,82 @@
       return { from_ts: now - Number(range), to_ts: now };
     }
 
-    async function refreshHistoryChart() {
-      const mode = document.getElementById("history-mode").value;
-      const selectedNodeId = Number(document.getElementById("history-sensor").value);
-      const params = {
-        outliers: document.getElementById("history-outliers").value,
-        ...currentHistoryRangeParams(),
-      };
-      if (mode === "single") params.node_id = selectedNodeId;
-      const response = await fetch(apiUrl("/nodes/minute-history", params));
-      const rows = normalizeMinuteRows(await response.json());
-      const datasets = buildDatasets(
-        rows,
-        mode,
-        selectedNodeId,
-        selectedMetrics(document.getElementById("history-metrics")),
-        document.getElementById("history-compare-metric").value,
-      );
-      const result = renderChart("history-chart", historyChart, rows, { datasets });
+    function renderHistoryChartFromRows(rows) {
+      const selectedNodeId = getSelectedNodeId("history");
+      const datasets = buildDatasets(selectedNodeId, selectedMetrics(document.getElementById("history-metrics")));
+      const result = renderChart("history-chart", historyChart, rows, { datasets, useCustomYAxis: true }, "history");
       historyChart = result.chart;
       setEmptyState("history-empty", !result.hasValues);
     }
 
-    async function refreshRealtimeChart() {
-      const mode = document.getElementById("realtime-mode").value;
-      const selectedNodeId = Number(document.getElementById("realtime-sensor").value);
-      const response = await fetch(apiUrl("/nodes/realtime", { window_seconds: document.getElementById("realtime-window").value }));
-      const rows = normalizeRealtimeRows(await response.json());
-      const datasets = buildDatasets(
+    function renderRealtimeChartFromRows(rows) {
+      const selectedNodeId = getSelectedNodeId("realtime");
+      const datasets = buildDatasets(selectedNodeId, selectedMetrics(document.getElementById("realtime-metrics")));
+      const isTenMinuteWindow = getRealtimeWindowSeconds() === 600;
+      const result = renderChart(
+        "realtime-chart",
+        realtimeChart,
         rows,
-        mode,
-        selectedNodeId,
-        selectedMetrics(document.getElementById("realtime-metrics")),
-        document.getElementById("realtime-compare-metric").value,
+        { datasets, useCustomYAxis: isTenMinuteWindow, applyEma: isTenMinuteWindow },
+        "realtime"
       );
-      const result = renderChart("realtime-chart", realtimeChart, rows, { datasets });
       realtimeChart = result.chart;
       setEmptyState("realtime-empty", !result.hasValues);
     }
 
-    function updateModeVisibility(prefix) {
-      const mode = document.getElementById(`${prefix}-mode`).value;
-      document.getElementById(`${prefix}-sensor`).disabled = mode === "compare";
-      document.getElementById(`${prefix}-compare-metric`).disabled = mode === "single";
-      document.getElementById(`${prefix}-metrics`).classList.toggle("opacity-40", mode === "compare");
+    function closeRealtimeStream() {
+      if (realtimeStream) {
+        realtimeStream.close();
+        realtimeStream = null;
+      }
+    }
+
+    function currentHistoryQueryParams() {
+      const selectedNodeId = getSelectedNodeId("history");
+      const params = {
+        outliers: document.getElementById("history-outliers").value,
+        ...currentHistoryRangeParams(),
+      };
+      if (selectedNodeId !== null) params.node_id = selectedNodeId;
+      return params;
+    }
+
+    function getRealtimeWindowSeconds() {
+      const raw = Number(document.getElementById("realtime-window").value);
+      if (!Number.isFinite(raw) || raw < 1) return 600;
+      return Math.floor(raw);
+    }
+
+    function startRealtimeStream() {
+      closeRealtimeStream();
+      latestRealtimeRows = [];
+      const source = new EventSource(
+        apiUrl("/nodes/realtime/stream", { window_seconds: getRealtimeWindowSeconds() })
+      );
+      realtimeStream = source;
+      source.onmessage = (event) => {
+        const payload = JSON.parse(event.data);
+        latestRealtimeRows = normalizeRealtimeRows(payload);
+        if (activeTab === "realtime") renderRealtimeChartFromRows(latestRealtimeRows);
+      };
+    }
+
+    async function refreshHistoryChart() {
+      if (activeTab !== "history") return;
+      const response = await fetch(apiUrl("/nodes/minute-history", currentHistoryQueryParams()));
+      latestHistoryRows = normalizeMinuteRows(await response.json());
+      renderHistoryChartFromRows(latestHistoryRows);
+    }
+
+    function refreshRealtimeChart(options = {}) {
+      const { restartStream = false } = options;
+      if (activeTab !== "realtime") return;
+      if (restartStream || !realtimeStream) startRealtimeStream();
+      renderRealtimeChartFromRows(latestRealtimeRows);
     }
 
     function switchTab(tab) {
+      activeTab = tab;
       document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
       document.getElementById(`tab-${tab}`).classList.remove("hidden");
       document.querySelectorAll(".tab-button").forEach((button) => {
@@ -429,30 +688,55 @@
         button.classList.toggle("text-slate-950", active);
         button.classList.toggle("shadow-sm", active);
       });
-      if (tab === "history") refreshHistoryChart();
-      if (tab === "realtime") refreshRealtimeChart();
+      if (tab === "history") {
+        closeRealtimeStream();
+        refreshHistoryChart();
+      } else if (tab === "realtime") {
+        refreshRealtimeChart({ restartStream: true });
+      } else {
+        closeRealtimeStream();
+      }
     }
 
     function initControls() {
       ["history", "realtime"].forEach((prefix) => {
         fillSensorSelect(document.getElementById(`${prefix}-sensor`));
-        fillMetricSelect(document.getElementById(`${prefix}-compare-metric`));
-        fillMetricChecks(document.getElementById(`${prefix}-metrics`));
-        updateModeVisibility(prefix);
-        document.getElementById(`${prefix}-mode`).addEventListener("change", () => {
-          updateModeVisibility(prefix);
-          prefix === "history" ? refreshHistoryChart() : refreshRealtimeChart();
+        renderMetricControls(prefix);
+        document.getElementById(`${prefix}-sensor`).addEventListener("change", () => {
+          renderMetricControls(prefix);
+          if (prefix === "history") refreshHistoryChart();
+          else refreshRealtimeChart();
         });
-        document.getElementById(`${prefix}-sensor`).addEventListener("change", () => prefix === "history" ? refreshHistoryChart() : refreshRealtimeChart());
-        document.getElementById(`${prefix}-compare-metric`).addEventListener("change", () => prefix === "history" ? refreshHistoryChart() : refreshRealtimeChart());
-        document.getElementById(`${prefix}-metrics`).addEventListener("change", () => prefix === "history" ? refreshHistoryChart() : refreshRealtimeChart());
+        document.getElementById(`${prefix}-metrics`).addEventListener("change", () => {
+          updateMetricSelectionState(prefix);
+          if (prefix === "history") renderHistoryChartFromRows(latestHistoryRows);
+          else refreshRealtimeChart();
+        });
       });
       ["history-range", "history-from", "history-to", "history-outliers"].forEach((id) => {
         document.getElementById(id).addEventListener("change", refreshHistoryChart);
       });
-      document.getElementById("history-refresh").addEventListener("click", refreshHistoryChart);
-      document.getElementById("realtime-window").addEventListener("change", refreshRealtimeChart);
+      document.getElementById("realtime-window").addEventListener("change", () => {
+        refreshRealtimeChart({ restartStream: true });
+      });
       document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
+    }
+
+    function initChartHoverTracking() {
+      const pairs = [
+        { key: "history", id: "history-chart" },
+        { key: "realtime", id: "realtime-chart" },
+      ];
+      pairs.forEach((pair) => {
+        const canvas = document.getElementById(pair.id);
+        if (!canvas) return;
+        canvas.addEventListener("mouseenter", () => {
+          chartHoverState[pair.key] = true;
+        });
+        canvas.addEventListener("mouseleave", () => {
+          chartHoverState[pair.key] = false;
+        });
+      });
     }
 
     const evtSource = new EventSource(streamUrl);
@@ -471,14 +755,22 @@
       streamStatus.className = "rounded-full bg-amber-100 px-2 py-1 text-amber-700";
     };
 
+    if (devLiveReloadEnabled) {
+      const liveReloadSource = new EventSource(apiUrl("/dev/live-reload/stream"));
+      liveReloadSource.addEventListener("reload", () => {
+        window.location.reload();
+      });
+    }
+
     initControls();
+    initChartHoverTracking();
     initTileBars();
     switchTab("tiles");
     markStaleTiles();
     setInterval(markStaleTiles, 1000);
     setInterval(() => {
-      if (!document.getElementById("tab-realtime").classList.contains("hidden")) refreshRealtimeChart();
-    }, 1000);
+      if (activeTab === "history") refreshHistoryChart();
+    }, 30000);
   </script>
 </body>
 </html>

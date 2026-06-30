@@ -76,8 +76,11 @@ python -m RaspberryPi.backend.main \
   --expected-nodes 9 \
   --stale-seconds 4.0 \
   --db-path RaspberryPi/data/smartshelf.db \
-  --cache-path RaspberryPi/data/second_cache.json
+  --cache-path RaspberryPi/data/second_cache.json \
+  --live-reload
 ```
+
+`--live-reload` is enabled by default. Disable it with `--no-live-reload`.
 
 ### Optional Debug Monitor (Terminal UI)
 
@@ -92,6 +95,7 @@ python -m RaspberryPi.backend.monitor_esp_ble
 - `GET /health` - backend/scanner/database status.
 - `GET /nodes/latest` - latest reading per node from rolling cache.
 - `GET /nodes/realtime?window_seconds=600` - cached per-second readings.
+- `GET /nodes/realtime/stream?window_seconds=600` - SSE stream of rolling-window cache snapshots (1s cadence).
 - `GET /nodes/status` - online/stale and packet/drop counters per node.
 - `GET /nodes/minute-history?outliers=include|exclude&from_ts=&to_ts=&node_id=` - minute aggregates from SQLite.
 
