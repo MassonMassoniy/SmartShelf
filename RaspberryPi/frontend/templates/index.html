@@ -71,6 +71,8 @@
           <div class="mb-2 grid shrink-0 grid-cols-12 gap-2 text-xs">
             <select id="realtime-sensor" class="col-span-9 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
             <select id="realtime-window" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
+              <option value="60">Last 1m</option>
+              <option value="300">Last 5m</option>
               <option value="600" selected>Last 10m</option>
             </select>
             <div id="realtime-metrics" class="col-span-12 flex flex-wrap items-center gap-3 rounded-xl bg-slate-100 px-3 py-1.5 font-semibold text-slate-600"></div>
@@ -107,6 +109,7 @@
       { field: "humidity_rh", tileField: "humidity", label: "Humidity", unit: "%", color: "#0ea5e9" },
       { field: "voc_index", tileField: "gas", label: "VOC Index", unit: "", color: "#10b981" },
     ];
+    const emaBaseAlpha = 1;
     const palette = ["#0891b2", "#7c3aed", "#dc2626", "#16a34a", "#ea580c", "#2563eb", "#be123c", "#4f46e5", "#0f766e", "#64748b"];
     const metricSelectionState = {
       history: { single: new Set(metrics.map((metric) => metric.field)), all: metrics[0].field },
@@ -342,6 +345,124 @@
       if (chart) chart.destroy();
     }
 
+    function isEmaSmoothedField(field) {
+      return field === "temperature_c" || field === "humidity_rh";
+    }
+
+    function median(values) {
+      if (!values.length) return 1;
+      const ordered = [...values].sort((a, b) => a - b);
+      const mid = Math.floor(ordered.length / 2);
+      if (ordered.length % 2 === 1) return ordered[mid];
+      return (ordered[mid - 1] + ordered[mid]) / 2;
+    }
+
+    function estimateNominalInterval(timestamps) {
+      if (timestamps.length < 2) return 1;
+      const deltas = [];
+      for (let i = 1; i < timestamps.length; i += 1) {
+        const delta = Number(timestamps[i]) - Number(timestamps[i - 1]);
+        if (delta > 0) deltas.push(delta);
+      }
+      return Math.max(1, median(deltas));
+    }
+
+    function timeWeightedAlpha(baseAlpha, deltaSeconds, nominalIntervalSeconds) {
+      const safeBase = Math.min(Math.max(Number(baseAlpha) || 0, 0), 1);
+      const safeNominal = Math.max(1, Number(nominalIntervalSeconds) || 1);
+      const ratio = Math.max(0, Number(deltaSeconds) || 0) / safeNominal;
+      // If ratio=1, alpha_t=baseAlpha; larger gaps increase alpha_t to reduce lag.
+      return 1 - Math.pow(1 - safeBase, ratio);
+    }
+
+    function applyEmaSmoothing(values, timestamps, baseAlpha) {
+      const output = new Array(values.length).fill(null);
+      const observedTimestamps = [];
+      for (let i = 0; i < values.length; i += 1) {
+        if (values[i] != null) observedTimestamps.push(Number(timestamps[i]));
+      }
+      const nominalInterval = estimateNominalInterval(observedTimestamps);
+
+      let lastEma = null;
+      let lastTs = null;
+      for (let i = 0; i < values.length; i += 1) {
+        const value = values[i];
+        if (value == null) {
+          output[i] = null;
+          continue;
+        }
+        const ts = Number(timestamps[i]);
+        if (lastEma == null || lastTs == null) {
+          // First reading is baseline: EMA0 = x0
+          lastEma = Number(value);
+          lastTs = ts;
+          output[i] = lastEma;
+          continue;
+        }
+        const deltaSeconds = Math.max(0, ts - lastTs);
+        const alphaT = timeWeightedAlpha(baseAlpha, deltaSeconds, nominalInterval);
+        lastEma = alphaT * Number(value) + (1 - alphaT) * lastEma;
+        lastTs = ts;
+        output[i] = lastEma;
+      }
+      return output;
+    }
+
+    function buildYAxisConfig(datasets) {
+      const base = {
+        ticks: { font: { size: 10 } },
+        grid: { color: "#e2e8f0" },
+      };
+      if (!datasets.length) return base;
+
+      const uniqueFields = [...new Set(datasets.map((dataset) => dataset.field))];
+      if (uniqueFields.length !== 1) return base;
+
+      const field = uniqueFields[0];
+      const scaleStep = field === "temperature_c" ? 3 : (field === "humidity_rh" ? 5 : null);
+      if (scaleStep == null) return base;
+
+      const values = datasets.flatMap((dataset) => dataset.data.filter((value) => value !== null).map(Number));
+      if (!values.length) return base;
+
+      const minValue = Math.min(...values);
+      const maxValue = Math.max(...values);
+      let minBound = Math.floor(minValue / scaleStep) * scaleStep;
+      let maxBound = Math.ceil(maxValue / scaleStep) * scaleStep;
+      if (maxBound <= minBound) maxBound = minBound + scaleStep;
+      const span = maxBound - minBound;
+      if (span < scaleStep) maxBound = minBound + scaleStep;
+      const resolvedSpan = maxBound - minBound;
+
+      const decimalStep = 0.5;
+      const maxTicksForDecimals = 12;
+      const decimalTickCount = Math.floor(resolvedSpan / decimalStep) + 1;
+      const labelStep = decimalTickCount <= maxTicksForDecimals ? decimalStep : 1;
+
+      return {
+        ...base,
+        min: minBound,
+        max: maxBound,
+        ticks: {
+          ...base.ticks,
+          stepSize: labelStep,
+          autoSkip: true,
+          callback: (raw) => {
+            const value = Number(raw);
+            if (!Number.isFinite(value)) return String(raw);
+            return Number.isInteger(value) ? String(value) : value.toFixed(1);
+          },
+        },
+      };
+    }
+
+    function buildAutoYAxisConfig() {
+      return {
+        ticks: { font: { size: 10 } },
+        grid: { color: "#e2e8f0" },
+      };
+    }
+
     function captureActiveTooltipState(chart) {
       const active = chart.getActiveElements();
       if (!active || !active.length) return null;
@@ -374,13 +495,20 @@
 
     function renderChart(canvasId, existingChart, rows, options, hoverKey) {
       const labels = [...new Set(rows.map((row) => Number(row.ts)))].sort((a, b) => a - b);
+      const applyEma = options.applyEma !== false;
       const datasets = options.datasets.map((dataset, index) => ({
+        field: dataset.field,
+        nodeId: dataset.nodeId,
         label: dataset.label,
-        data: labels.map((ts) => {
-          const row = rows.find((item) => Number(item.ts) === ts && Number(item.node_id) === Number(dataset.nodeId));
-          const value = row ? row[dataset.field] : null;
-          return value == null ? null : Number(value);
-        }),
+        data: (() => {
+          const rawData = labels.map((ts) => {
+            const row = rows.find((item) => Number(item.ts) === ts && Number(item.node_id) === Number(dataset.nodeId));
+            const value = row ? row[dataset.field] : null;
+            return value == null ? null : Number(value);
+          });
+          if (!applyEma || !isEmaSmoothedField(dataset.field)) return rawData;
+          return applyEmaSmoothing(rawData, labels, emaBaseAlpha);
+        })(),
         borderColor: dataset.color || palette[index % palette.length],
         backgroundColor: dataset.color || palette[index % palette.length],
         borderWidth: 2,
@@ -388,6 +516,8 @@
         tension: 0.25,
         spanGaps: true,
       }));
+      const useCustomYAxis = options.useCustomYAxis !== false;
+      const yAxisConfig = useCustomYAxis ? buildYAxisConfig(datasets) : buildAutoYAxisConfig();
       const hasValues = datasets.some((dataset) => dataset.data.some((value) => value !== null));
       if (!existingChart) {
         const ctx = document.getElementById(canvasId);
@@ -405,7 +535,7 @@
             },
             scales: {
               x: { ticks: { maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
-              y: { ticks: { font: { size: 10 } }, grid: { color: "#e2e8f0" } },
+              y: yAxisConfig,
             },
           },
         });
@@ -417,6 +547,7 @@
       existingChart.data.labels = labels.map(formatChartTime);
       existingChart.data.datasets = datasets;
       existingChart.$rawLabels = labels;
+      existingChart.options.scales.y = yAxisConfig;
       existingChart.update("none");
       if (chartHoverState[hoverKey]) restoreActiveTooltipState(existingChart, tooltipState);
       return { chart: existingChart, hasValues };
@@ -476,7 +607,7 @@
     function renderHistoryChartFromRows(rows) {
       const selectedNodeId = getSelectedNodeId("history");
       const datasets = buildDatasets(selectedNodeId, selectedMetrics(document.getElementById("history-metrics")));
-      const result = renderChart("history-chart", historyChart, rows, { datasets }, "history");
+      const result = renderChart("history-chart", historyChart, rows, { datasets, useCustomYAxis: true }, "history");
       historyChart = result.chart;
       setEmptyState("history-empty", !result.hasValues);
     }
@@ -484,7 +615,14 @@
     function renderRealtimeChartFromRows(rows) {
       const selectedNodeId = getSelectedNodeId("realtime");
       const datasets = buildDatasets(selectedNodeId, selectedMetrics(document.getElementById("realtime-metrics")));
-      const result = renderChart("realtime-chart", realtimeChart, rows, { datasets }, "realtime");
+      const isTenMinuteWindow = getRealtimeWindowSeconds() === 600;
+      const result = renderChart(
+        "realtime-chart",
+        realtimeChart,
+        rows,
+        { datasets, useCustomYAxis: isTenMinuteWindow, applyEma: isTenMinuteWindow },
+        "realtime"
+      );
       realtimeChart = result.chart;
       setEmptyState("realtime-empty", !result.hasValues);
     }
@@ -507,7 +645,9 @@
     }
 
     function getRealtimeWindowSeconds() {
-      return 600;
+      const raw = Number(document.getElementById("realtime-window").value);
+      if (!Number.isFinite(raw) || raw < 1) return 600;
+      return Math.floor(raw);
     }
 
     function startRealtimeStream() {
@@ -575,6 +715,9 @@
       });
       ["history-range", "history-from", "history-to", "history-outliers"].forEach((id) => {
         document.getElementById(id).addEventListener("change", refreshHistoryChart);
+      });
+      document.getElementById("realtime-window").addEventListener("change", () => {
+        refreshRealtimeChart({ restartStream: true });
       });
       document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
     }
