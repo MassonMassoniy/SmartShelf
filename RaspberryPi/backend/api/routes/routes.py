@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 from typing import Any
 
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
@@ -20,10 +21,20 @@ SENSOR_LABEL_BY_NODE_ID = {
     36237: "C1",
 }
 SENSOR_LABEL_ORDER = ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"]
+LIVE_RELOAD_RELATIVE_DIRS = (
+    "RaspberryPi/backend",
+    "RaspberryPi/frontend/templates",
+)
+LIVE_RELOAD_SUFFIXES = {".py", ".html", ".css", ".js"}
+LIVE_RELOAD_EXCLUDED_DIRS = {"__pycache__", ".git", ".venv", "venv", "node_modules", "data"}
 
 
 def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
     last_snapshot: dict[str, Any] = {"sensors": [], "readings": {}}
+    live_reload_enabled = bool(app.config.get("SMARTSHELF_LIVE_RELOAD", False))
+    repo_root_raw = app.config.get("SMARTSHELF_REPO_ROOT")
+    repo_root = Path(str(repo_root_raw)) if repo_root_raw else None
+    live_reload_roots = _resolve_live_reload_roots(repo_root)
 
     def parse_window_seconds():
         window_seconds = request.args.get("window_seconds", default=600, type=int)
@@ -69,6 +80,7 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
             backend_stream_url="/nodes/stream",
             backend_api_base_url="",
             stale_seconds=service.stale_seconds,
+            dev_live_reload_enabled=live_reload_enabled,
         )
 
     @app.route("/sensor/<sensor_id>/tile")
@@ -185,6 +197,31 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
             )
         )
 
+    @app.get("/dev/live-reload/stream")
+    def dev_live_reload_stream() -> tuple[Response, int] | Response:
+        if not live_reload_enabled:
+            return jsonify({"detail": "live reload disabled"}), 404
+        if not live_reload_roots:
+            return jsonify({"detail": "live reload paths unavailable"}), 500
+
+        def event_generator():
+            last_signature = _live_reload_signature(live_reload_roots)
+            yield ": connected\n\n"
+            try:
+                while True:
+                    signature = _live_reload_signature(live_reload_roots)
+                    if signature != last_signature:
+                        payload = {"ts": int(time.time())}
+                        yield f"event: reload\ndata: {json.dumps(payload)}\n\n"
+                        last_signature = signature
+                    else:
+                        yield ": keepalive\n\n"
+                    time.sleep(1)
+            except GeneratorExit:
+                return
+
+        return _make_sse_response(event_generator())
+
     return app
 
 
@@ -277,5 +314,39 @@ def _make_sse_response(event_iterator: Any) -> Response:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+def _resolve_live_reload_roots(repo_root: Path | None) -> list[Path]:
+    if repo_root is None:
+        return []
+    roots: list[Path] = []
+    for relative in LIVE_RELOAD_RELATIVE_DIRS:
+        path = (repo_root / relative).resolve()
+        if path.exists():
+            roots.append(path)
+    return roots
+
+
+def _live_reload_signature(roots: list[Path]) -> tuple[int, int]:
+    file_count = 0
+    latest_mtime_ns = 0
+
+    for root in roots:
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in LIVE_RELOAD_SUFFIXES:
+                continue
+            if any(part in LIVE_RELOAD_EXCLUDED_DIRS for part in path.parts):
+                continue
+            try:
+                mtime_ns = path.stat().st_mtime_ns
+            except OSError:
+                continue
+            file_count += 1
+            if mtime_ns > latest_mtime_ns:
+                latest_mtime_ns = mtime_ns
+
+    return file_count, latest_mtime_ns
 
 

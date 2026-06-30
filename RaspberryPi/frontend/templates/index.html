@@ -101,6 +101,7 @@
     const streamUrl = {{ backend_stream_url | tojson }};
     const apiBaseUrl = {{ backend_api_base_url | default("") | tojson }};
     const staleSeconds = Number({{ stale_seconds | default(4) | tojson }});
+    const devLiveReloadEnabled = Boolean({{ dev_live_reload_enabled | default(false) | tojson }});
     const sensors = {{ sensors | tojson }};
     const sensorByNodeId = new Map(sensors.map((sensor) => [Number(sensor.node_id), sensor]));
     const backendClock = document.getElementById("backend-clock");
@@ -533,6 +534,13 @@
       streamStatus.textContent = "reconnecting";
       streamStatus.className = "rounded-full bg-amber-100 px-2 py-1 text-amber-700";
     };
+
+    if (devLiveReloadEnabled) {
+      const liveReloadSource = new EventSource(apiUrl("/dev/live-reload/stream"));
+      liveReloadSource.addEventListener("reload", () => {
+        window.location.reload();
+      });
+    }
 
     initControls();
     initTileBars();

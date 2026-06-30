@@ -76,8 +76,11 @@ python -m RaspberryPi.backend.main \
   --expected-nodes 9 \
   --stale-seconds 4.0 \
   --db-path RaspberryPi/data/smartshelf.db \
-  --cache-path RaspberryPi/data/second_cache.json
+  --cache-path RaspberryPi/data/second_cache.json \
+  --live-reload
 ```
+
+`--live-reload` is enabled by default. Disable it with `--no-live-reload`.
 
 ### Optional Debug Monitor (Terminal UI)
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import asyncio
+import os
 import sys
 import threading
 from pathlib import Path
@@ -91,6 +92,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stale-seconds", type=float, default=STALE_SECONDS)
     parser.add_argument("--db-path", default=db_path)
     parser.add_argument("--cache-path", default=cache_path)
+    parser.add_argument(
+        "--live-reload",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable backend code reload and browser auto-refresh support",
+    )
     return parser.parse_args()
 
 
@@ -110,6 +117,11 @@ def build_app(args: argparse.Namespace) -> Flask:
     app.config["SMARTSHELF_SERVICE"] = service
     app.config["SMARTSHELF_RUNTIME"] = runtime
     app.config["JSON_SORT_KEYS"] = False
+    app.config["SMARTSHELF_REPO_ROOT"] = str(REPO_ROOT)
+    app.config["SMARTSHELF_LIVE_RELOAD"] = bool(args.live_reload)
+    app.config["TEMPLATES_AUTO_RELOAD"] = bool(args.live_reload)
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0 if args.live_reload else None
+    app.jinja_env.auto_reload = bool(args.live_reload)
 
     create_api(service, app)
 
@@ -121,13 +133,19 @@ def main_back() -> None:
     app = build_app(args)
     runtime: AsyncServiceRuntime = app.config["SMARTSHELF_RUNTIME"]
 
-    runtime.start()
-    atexit.register(runtime.stop)
+    use_reloader = bool(args.live_reload)
+    is_reloader_child = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    should_manage_runtime = (not use_reloader) or is_reloader_child
+
+    if should_manage_runtime:
+        runtime.start()
+        atexit.register(runtime.stop)
 
     try:
-        app.run(host=args.host, port=args.port, threaded=True)
+        app.run(host=args.host, port=args.port, threaded=True, use_reloader=use_reloader)
     finally:
-        runtime.stop()
+        if should_manage_runtime:
+            runtime.stop()
 
 
 if __name__ == "__main__":
