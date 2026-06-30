@@ -58,12 +58,11 @@
             </select>
             <input id="history-from" type="datetime-local" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold" />
             <input id="history-to" type="datetime-local" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold" />
-            <div id="history-metrics" class="col-span-8 flex flex-wrap items-center gap-3 rounded-xl bg-slate-100 px-3 py-1.5 font-semibold text-slate-600"></div>
+            <div id="history-metrics" class="col-span-10 flex flex-wrap items-center gap-3 rounded-xl bg-slate-100 px-3 py-1.5 font-semibold text-slate-600"></div>
             <select id="history-outliers" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
               <option value="include">Include outliers</option>
               <option value="exclude">Exclude outliers</option>
             </select>
-            <button id="history-refresh" class="col-span-2 rounded-xl bg-slate-950 px-3 py-1.5 font-black text-white">Refresh</button>
           </div>
           <div class="relative min-h-0 flex-1 rounded-2xl bg-slate-50 p-2">
             <canvas id="history-chart"></canvas>
@@ -108,6 +107,10 @@
     const streamStatus = document.getElementById("stream-status");
     let historyChart = null;
     let realtimeChart = null;
+    let realtimeStream = null;
+    let latestHistoryRows = [];
+    let latestRealtimeRows = [];
+    let activeTab = "tiles";
 
     const metrics = [
       { field: "temperature_c", tileField: "temperature", label: "Temperature", unit: "°C", color: "#ef4444" },
@@ -374,16 +377,9 @@
       return { from_ts: now - Number(range), to_ts: now };
     }
 
-    async function refreshHistoryChart() {
+    function renderHistoryChartFromRows(rows) {
       const mode = document.getElementById("history-mode").value;
       const selectedNodeId = Number(document.getElementById("history-sensor").value);
-      const params = {
-        outliers: document.getElementById("history-outliers").value,
-        ...currentHistoryRangeParams(),
-      };
-      if (mode === "single") params.node_id = selectedNodeId;
-      const response = await fetch(apiUrl("/nodes/minute-history", params));
-      const rows = normalizeMinuteRows(await response.json());
       const datasets = buildDatasets(
         rows,
         mode,
@@ -396,11 +392,9 @@
       setEmptyState("history-empty", !result.hasValues);
     }
 
-    async function refreshRealtimeChart() {
+    function renderRealtimeChartFromRows(rows) {
       const mode = document.getElementById("realtime-mode").value;
       const selectedNodeId = Number(document.getElementById("realtime-sensor").value);
-      const response = await fetch(apiUrl("/nodes/realtime", { window_seconds: document.getElementById("realtime-window").value }));
-      const rows = normalizeRealtimeRows(await response.json());
       const datasets = buildDatasets(
         rows,
         mode,
@@ -413,6 +407,52 @@
       setEmptyState("realtime-empty", !result.hasValues);
     }
 
+    function closeRealtimeStream() {
+      if (realtimeStream) {
+        realtimeStream.close();
+        realtimeStream = null;
+      }
+    }
+
+    function currentHistoryQueryParams() {
+      const mode = document.getElementById("history-mode").value;
+      const selectedNodeId = Number(document.getElementById("history-sensor").value);
+      const params = {
+        outliers: document.getElementById("history-outliers").value,
+        ...currentHistoryRangeParams(),
+      };
+      if (mode === "single") params.node_id = selectedNodeId;
+      return params;
+    }
+
+    function startRealtimeStream() {
+      closeRealtimeStream();
+      latestRealtimeRows = [];
+      const source = new EventSource(
+        apiUrl("/nodes/realtime/stream", { window_seconds: document.getElementById("realtime-window").value })
+      );
+      realtimeStream = source;
+      source.onmessage = (event) => {
+        const payload = JSON.parse(event.data);
+        latestRealtimeRows = normalizeRealtimeRows(payload);
+        if (activeTab === "realtime") renderRealtimeChartFromRows(latestRealtimeRows);
+      };
+    }
+
+    async function refreshHistoryChart() {
+      if (activeTab !== "history") return;
+      const response = await fetch(apiUrl("/nodes/minute-history", currentHistoryQueryParams()));
+      latestHistoryRows = normalizeMinuteRows(await response.json());
+      renderHistoryChartFromRows(latestHistoryRows);
+    }
+
+    function refreshRealtimeChart(options = {}) {
+      const { restartStream = false } = options;
+      if (activeTab !== "realtime") return;
+      if (restartStream || !realtimeStream) startRealtimeStream();
+      renderRealtimeChartFromRows(latestRealtimeRows);
+    }
+
     function updateModeVisibility(prefix) {
       const mode = document.getElementById(`${prefix}-mode`).value;
       document.getElementById(`${prefix}-sensor`).disabled = mode === "compare";
@@ -421,6 +461,7 @@
     }
 
     function switchTab(tab) {
+      activeTab = tab;
       document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
       document.getElementById(`tab-${tab}`).classList.remove("hidden");
       document.querySelectorAll(".tab-button").forEach((button) => {
@@ -429,8 +470,14 @@
         button.classList.toggle("text-slate-950", active);
         button.classList.toggle("shadow-sm", active);
       });
-      if (tab === "history") refreshHistoryChart();
-      if (tab === "realtime") refreshRealtimeChart();
+      if (tab === "history") {
+        closeRealtimeStream();
+        refreshHistoryChart();
+      } else if (tab === "realtime") {
+        refreshRealtimeChart({ restartStream: true });
+      } else {
+        closeRealtimeStream();
+      }
     }
 
     function initControls() {
@@ -441,17 +488,33 @@
         updateModeVisibility(prefix);
         document.getElementById(`${prefix}-mode`).addEventListener("change", () => {
           updateModeVisibility(prefix);
-          prefix === "history" ? refreshHistoryChart() : refreshRealtimeChart();
+          if (prefix === "history") {
+            refreshHistoryChart();
+          } else {
+            refreshRealtimeChart();
+          }
         });
-        document.getElementById(`${prefix}-sensor`).addEventListener("change", () => prefix === "history" ? refreshHistoryChart() : refreshRealtimeChart());
-        document.getElementById(`${prefix}-compare-metric`).addEventListener("change", () => prefix === "history" ? refreshHistoryChart() : refreshRealtimeChart());
-        document.getElementById(`${prefix}-metrics`).addEventListener("change", () => prefix === "history" ? refreshHistoryChart() : refreshRealtimeChart());
+        document.getElementById(`${prefix}-sensor`).addEventListener("change", () => {
+          if (prefix === "history") {
+            if (document.getElementById("history-mode").value === "single") refreshHistoryChart();
+            else renderHistoryChartFromRows(latestHistoryRows);
+          } else {
+            refreshRealtimeChart();
+          }
+        });
+        document.getElementById(`${prefix}-compare-metric`).addEventListener(
+          "change",
+          () => (prefix === "history" ? renderHistoryChartFromRows(latestHistoryRows) : refreshRealtimeChart())
+        );
+        document.getElementById(`${prefix}-metrics`).addEventListener(
+          "change",
+          () => (prefix === "history" ? renderHistoryChartFromRows(latestHistoryRows) : refreshRealtimeChart())
+        );
       });
       ["history-range", "history-from", "history-to", "history-outliers"].forEach((id) => {
         document.getElementById(id).addEventListener("change", refreshHistoryChart);
       });
-      document.getElementById("history-refresh").addEventListener("click", refreshHistoryChart);
-      document.getElementById("realtime-window").addEventListener("change", refreshRealtimeChart);
+      document.getElementById("realtime-window").addEventListener("change", () => refreshRealtimeChart({ restartStream: true }));
       document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
     }
 
@@ -477,8 +540,8 @@
     markStaleTiles();
     setInterval(markStaleTiles, 1000);
     setInterval(() => {
-      if (!document.getElementById("tab-realtime").classList.contains("hidden")) refreshRealtimeChart();
-    }, 1000);
+      if (activeTab === "history") refreshHistoryChart();
+    }, 30000);
   </script>
 </body>
 </html>

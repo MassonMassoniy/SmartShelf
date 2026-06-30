@@ -25,6 +25,21 @@ SENSOR_LABEL_ORDER = ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"]
 def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
     last_snapshot: dict[str, Any] = {"sensors": [], "readings": {}}
 
+    def parse_window_seconds():
+        window_seconds = request.args.get("window_seconds", default=600, type=int)
+        if window_seconds < 1 or window_seconds > 3600:
+            return None, (jsonify({"detail": "window_seconds must be between 1 and 3600"}), 422)
+        return window_seconds, None
+
+    def parse_minute_history_query():
+        outliers = request.args.get("outliers", default="include", type=str)
+        if outliers not in {"include", "exclude"}:
+            return None, None, None, None, (jsonify({"detail": "outliers must be 'include' or 'exclude'"}), 422)
+        from_ts = request.args.get("from_ts", default=None, type=int)
+        to_ts = request.args.get("to_ts", default=None, type=int)
+        node_id = request.args.get("node_id", default=None, type=int)
+        return outliers, from_ts, to_ts, node_id, None
+
     @app.after_request
     def add_cors_headers(response: Response) -> Response:
         origin = request.headers.get("Origin")
@@ -102,9 +117,9 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
 
     @app.get("/nodes/realtime")
     def nodes_realtime() -> tuple[Response, int] | Response:
-        window_seconds = request.args.get("window_seconds", default=600, type=int)
-        if window_seconds < 1 or window_seconds > 3600:
-            return jsonify({"detail": "window_seconds must be between 1 and 3600"}), 422
+        window_seconds, error = parse_window_seconds()
+        if error is not None:
+            return error
 
         return jsonify(
             {
@@ -112,6 +127,27 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
                 "nodes": service.get_realtime_window(window_seconds=window_seconds),
             }
         )
+
+    @app.get("/nodes/realtime/stream")
+    def nodes_realtime_stream() -> tuple[Response, int] | Response:
+        window_seconds, error = parse_window_seconds()
+        if error is not None:
+            return error
+
+        def event_generator():
+            try:
+                while True:
+                    payload = {
+                        "server_time": int(time.time()),
+                        "window_seconds": window_seconds,
+                        "nodes": service.get_realtime_window(window_seconds=window_seconds),
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                    time.sleep(1)
+            except GeneratorExit:
+                return
+
+        return _make_sse_response(event_generator())
 
     @app.get("/nodes/status")
     def nodes_status() -> Response:
@@ -132,25 +168,14 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
             except GeneratorExit:
                 return
 
-        return Response(
-            stream_with_context(event_generator()),
-            mimetype="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
-        )
+        return _make_sse_response(event_generator())
 
     @app.get("/nodes/minute-history")
     def minute_history() -> tuple[Response, int] | Response:
-        outliers = request.args.get("outliers", default="include", type=str)
-        if outliers not in {"include", "exclude"}:
-            return jsonify({"detail": "outliers must be 'include' or 'exclude'"}), 422
+        outliers, from_ts, to_ts, node_id, error = parse_minute_history_query()
+        if error is not None:
+            return error
 
-        from_ts = request.args.get("from_ts", default=None, type=int)
-        to_ts = request.args.get("to_ts", default=None, type=int)
-        node_id = request.args.get("node_id", default=None, type=int)
         return jsonify(
             service.storage.get_minute_history(
                 outliers=outliers,
@@ -240,3 +265,17 @@ def _load_latest_snapshot(service: BackendService) -> tuple[list[dict[str, Any]]
 
     sensors.sort(key=_sensor_sort_key)
     return sensors, readings
+
+
+def _make_sse_response(event_iterator: Any) -> Response:
+    return Response(
+        stream_with_context(event_iterator),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
