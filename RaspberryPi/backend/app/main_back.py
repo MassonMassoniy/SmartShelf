@@ -17,7 +17,12 @@ if __package__ in (None, ""):
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
 
-from RaspberryPi.backend.config.constants import DEFAULT_COMPANY_ID, EXPECTED_NODES, STALE_SECONDS
+from RaspberryPi.backend.config.constants import (
+    DEFAULT_COMPANY_ID,
+    EXPECTED_NODES,
+    PROJECT_NODE_IDS,
+    STALE_SECONDS,
+)
 from RaspberryPi.backend.api.routes.routes import create_api
 from RaspberryPi.backend.services.backend_service import BackendService
 
@@ -109,6 +114,7 @@ def build_app(args: argparse.Namespace) -> Flask:
         expected_nodes=args.expected_nodes,
         stale_seconds=args.stale_seconds,
     )
+    service.allowed_node_ids = {int(node_id) for node_id in PROJECT_NODE_IDS}
 
     runtime = AsyncServiceRuntime(service)
 

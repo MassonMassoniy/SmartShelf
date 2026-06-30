@@ -4,7 +4,7 @@ import asyncio
 import math
 import time
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 from ..storage.cache.ten_minute_cache import TenMinuteCache
 from ..ingestion.collector import BlePacketCollector, PacketEvent
@@ -71,10 +71,12 @@ class BackendService:
         cache_path: str,
         expected_nodes: int,
         stale_seconds: float = STALE_SECONDS,
+        allowed_node_ids: Optional[Iterable[int]] = None,
     ) -> None:
         self.company_id = company_id
         self.expected_nodes = expected_nodes
         self.stale_seconds = stale_seconds
+        self.allowed_node_ids = {int(node_id) for node_id in allowed_node_ids} if allowed_node_ids else None
 
         self.collector = BlePacketCollector(company_id=company_id)
         self.cache = TenMinuteCache(file_path=cache_path)
@@ -87,9 +89,16 @@ class BackendService:
 
         self.collector.add_listener(self._on_packet)
 
+    def _is_allowed_node(self, node_id: int) -> bool:
+        if self.allowed_node_ids is None:
+            return True
+        return int(node_id) in self.allowed_node_ids
+
     def _on_packet(self, event: PacketEvent) -> None:
         self.decode_errors = self.collector.decode_errors
         if not event.is_new_sequence:
+            return
+        if not self._is_allowed_node(event.packet.node_id):
             return
 
         sample = packet_to_dict(event.packet)
@@ -192,15 +201,22 @@ class BackendService:
 
     def get_latest_nodes(self) -> List[dict]:
         latest = self.cache.latest_by_node(max_age_seconds=self.stale_seconds)
+        if self.allowed_node_ids is not None:
+            latest = {node_id: node for node_id, node in latest.items() if node_id in self.allowed_node_ids}
         return [latest[node_id] for node_id in sorted(latest.keys())]
 
     def get_realtime_window(self, window_seconds: int) -> Dict[int, List[dict]]:
-        return self.cache.get_window(window_seconds=window_seconds)
+        window = self.cache.get_window(window_seconds=window_seconds)
+        if self.allowed_node_ids is None:
+            return window
+        return {node_id: samples for node_id, samples in window.items() if node_id in self.allowed_node_ids}
 
     def get_node_status(self) -> List[dict]:
         now = time.time()
         status = []
         for node_id in sorted(self.collector.nodes.keys()):
+            if not self._is_allowed_node(node_id):
+                continue
             state = self.collector.nodes[node_id]
             age = now - state.last_seen
             status.append(
@@ -224,7 +240,7 @@ class BackendService:
             "running": self._running,
             "company_id": self.company_id,
             "expected_nodes": self.expected_nodes,
-            "seen_nodes": len(self.collector.nodes),
+            "seen_nodes": len([node_id for node_id in self.collector.nodes if self._is_allowed_node(node_id)]),
             "collector_callbacks": self.collector.total_callbacks,
             "collector_packets": self.collector.total_packets,
             "decode_errors": self.collector.decode_errors,
