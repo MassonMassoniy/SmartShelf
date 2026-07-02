@@ -13,7 +13,7 @@ namespace {
 constexpr uint8_t PIN_SDA = 5;   // XIAO ESP32-S3 D4
 constexpr uint8_t PIN_SCL = 6;   // XIAO ESP32-S3 D5
 constexpr uint8_t PIN_VCNL4040_INT = 9;  // XIAO ESP32-S3 D2
-constexpr uint32_t LOOP_PERIOD_MS = 100;
+constexpr uint32_t LOOP_PERIOD_MS = 1000;
 constexpr uint32_t SGP41_CONDITIONING_S = 10;
 constexpr uint16_t BLE_COMPANY_ID = 0xFFFF;  // Replace with your own company ID if available.
 constexpr uint16_t BLE_ADV_MIN_INTERVAL_UNITS = 320;  // 200 ms

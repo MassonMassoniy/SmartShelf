@@ -109,7 +109,7 @@
       { field: "humidity_rh", tileField: "humidity", label: "Humidity", unit: "%", color: "#0ea5e9" },
       { field: "voc_index", tileField: "gas", label: "VOC Index", unit: "", color: "#10b981" },
     ];
-    const emaBaseAlpha = 1;
+    const emaBaseAlpha = 0.1;
     const palette = ["#0891b2", "#7c3aed", "#dc2626", "#16a34a", "#ea580c", "#2563eb", "#be123c", "#4f46e5", "#0f766e", "#64748b"];
     const metricSelectionState = {
       history: { single: new Set(metrics.map((metric) => metric.field)), all: metrics[0].field },
