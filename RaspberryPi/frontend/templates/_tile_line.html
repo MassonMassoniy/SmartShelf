@@ -1,19 +1,29 @@
 {% set has_data = reading and reading.ts %}
+{% if reading.cell_status is not none %}
+  {% set cell_status = reading.cell_status %}
+{% elif reading.proximity is none %}
+  {% set cell_status = 'unknown' %}
+{% elif reading.cell_empty %}
+  {% set cell_status = 'empty' %}
+{% else %}
+  {% set cell_status = 'full' %}
+{% endif %}
 <div
   id="tile-{{sensor.id}}"
   data-sensor-id="{{sensor.id}}"
   data-node-id="{{sensor.node_id}}"
   data-last-seen="{{reading.ts if has_data else ''}}"
+  data-cell-status="{{ cell_status if has_data else 'unknown' }}"
   data-tile-state="{% if has_data %}live{% else %}offline{% endif %}"
-  class="sensor-tile rounded-2xl border p-2.5 shadow-sm {% if has_data %}border-white/60 bg-white/90 shadow-slate-200/70{% else %}border-slate-300/70 bg-slate-100/80 opacity-80{% endif %}"
+  class="sensor-tile rounded-2xl border p-2.5 shadow-sm {% if has_data %}border-white/60 bg-white/90 shadow-slate-200/70{% if cell_status == 'empty' %} opacity-70{% endif %}{% else %}border-slate-300/70 bg-slate-100/80 opacity-80{% endif %}"
 >
   <div class="flex items-start justify-between gap-2">
     <div>
       <div class="text-xl font-black leading-none text-slate-950">{{sensor.name}}</div>
       <div class="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">Node {{sensor.node_id}}</div>
     </div>
-    <div data-field="status" class="rounded-full px-2 py-0.5 text-[10px] font-bold {% if has_data %}bg-emerald-100 text-emerald-700{% else %}bg-slate-200 text-slate-500{% endif %}">
-      {% if has_data %}Live{% else %}Offline{% endif %}
+    <div data-field="status" class="rounded-full px-2 py-0.5 text-[10px] font-bold {% if not has_data %}bg-slate-200 text-slate-500{% elif cell_status == 'empty' %}bg-red-100 text-red-700{% elif cell_status == 'unknown' %}bg-amber-100 text-amber-800{% else %}bg-emerald-100 text-emerald-700{% endif %}">
+      {% if not has_data %}Offline{% elif cell_status == 'empty' %}Empty{% elif cell_status == 'unknown' %}No proximity{% else %}Full{% endif %}
     </div>
   </div>
 
