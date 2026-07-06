@@ -8,6 +8,7 @@ from typing import Dict, Iterable, List, Optional
 
 from ..storage.cache.ten_minute_cache import TenMinuteCache
 from ..ingestion.collector import BlePacketCollector, PacketEvent
+from ..ingestion.cell_occupancy import with_cell_occupancy
 from ..ingestion.protocol_decoder import STALE_SECONDS, packet_to_dict
 from ..storage.sqlite.sqlite_storage import NO_OUTLIERS_TABLE, WITH_OUTLIERS_TABLE, SQLiteStorage
 
@@ -103,13 +104,16 @@ class BackendService:
         if not self._is_allowed_node(event.packet.node_id):
             return
 
-        sample = packet_to_dict(event.packet)
+        sample = with_cell_occupancy(packet_to_dict(event.packet))
         sample["address"] = event.address
         sample["name"] = event.name
         sample["received_at"] = event.received_at
         sample["dropped_since_previous"] = event.dropped_since_previous
 
         self.cache.add(sample)
+        if sample.get("cell_empty"):
+            return
+
         bucket = minute_bucket(event.received_at)
         key = (bucket, event.packet.node_id)
         self._minute_samples[key].append(sample)
@@ -157,6 +161,7 @@ class BackendService:
         wrote = False
         for minute_ts, node_id in finished_keys:
             samples = self._minute_samples.pop((minute_ts, node_id))
+            samples = [sample for sample in samples if not sample.get("cell_empty")]
             if not samples:
                 continue
             include_row = self._build_aggregate_row(
@@ -231,7 +236,7 @@ class BackendService:
         latest = self.cache.latest_by_node(max_age_seconds=self.stale_seconds)
         if self.allowed_node_ids is not None:
             latest = {node_id: node for node_id, node in latest.items() if node_id in self.allowed_node_ids}
-        return [latest[node_id] for node_id in sorted(latest.keys())]
+        return [with_cell_occupancy(latest[node_id]) for node_id in sorted(latest.keys())]
 
     def get_realtime_window(self, window_seconds: int) -> Dict[int, List[dict]]:
         window = self.cache.get_window(window_seconds=window_seconds)

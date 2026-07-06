@@ -40,7 +40,37 @@ def seq_delta(prev: int, cur: int) -> int:
 
 def decode_payload(payload: bytes) -> SensorPacket:
     """Decode SmartShelf BLE manufacturer payload."""
-    if len(payload) == 26:
+    ambient_light = None
+    white_light = None
+    ambient_deci_lux = 0
+    sraw_voc = 0
+    sraw_nox = 0
+    nox_index = None
+
+    if len(payload) == 14:
+        (
+            protocol_version,
+            node_id,
+            flags,
+            temp_centi,
+            hum_centi,
+            proximity,
+            voc_index,
+            sequence,
+        ) = struct.unpack("<BHBhHHhH", payload)
+    elif len(payload) == 16:
+        (
+            protocol_version,
+            node_id,
+            flags,
+            temp_centi,
+            hum_centi,
+            proximity,
+            voc_index,
+            nox_index,
+            sequence,
+        ) = struct.unpack("<BHBhHHhhH", payload)
+    elif len(payload) == 26:
         (
             protocol_version,
             node_id,
@@ -89,8 +119,6 @@ def decode_payload(payload: bytes) -> SensorPacket:
         ) = struct.unpack("<BHBhHHHhhH", payload)
         white_light = 0
         ambient_deci_lux = 0
-        sraw_voc = 0
-        sraw_nox = 0
     elif len(payload) == 17:
         (
             protocol_version,
@@ -106,8 +134,6 @@ def decode_payload(payload: bytes) -> SensorPacket:
         ) = struct.unpack("<BBBhHHHhhH", payload)
         white_light = 0
         ambient_deci_lux = 0
-        sraw_voc = 0
-        sraw_nox = 0
     else:
         raise ValueError(f"Unsupported payload size: {len(payload)}")
 
@@ -122,7 +148,7 @@ def decode_payload(payload: bytes) -> SensorPacket:
     white_out = white_light if has_vcnl else None
     lux_out = (ambient_deci_lux / 10.0) if has_vcnl and ambient_deci_lux > 0 else None
     voc_out = voc_index if has_sgp and voc_index >= 0 else None
-    nox_out = nox_index if has_sgp and nox_index >= 0 else None
+    nox_out = nox_index if has_sgp and nox_index is not None and nox_index >= 0 else None
     sraw_voc_out = sraw_voc if has_sgp and sraw_voc > 0 else None
     sraw_nox_out = sraw_nox if has_sgp and sraw_nox > 0 else None
 

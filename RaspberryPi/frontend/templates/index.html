@@ -109,7 +109,7 @@
       { field: "humidity_rh", tileField: "humidity", label: "Humidity", unit: "%", color: "#0ea5e9" },
       { field: "voc_index", tileField: "gas", label: "VOC Index", unit: "", color: "#10b981" },
     ];
-    const emaBaseAlpha = 1;
+    const emaBaseAlpha = 0.1;
     const palette = ["#0891b2", "#7c3aed", "#dc2626", "#16a34a", "#ea580c", "#2563eb", "#be123c", "#4f46e5", "#0f766e", "#64748b"];
     const metricSelectionState = {
       history: { single: new Set(metrics.map((metric) => metric.field)), all: metrics[0].field },
@@ -197,21 +197,53 @@
       return referenceTs - updatedTs <= staleDisplayThresholdSeconds;
     }
 
+    function resolveCellStatus(node) {
+      if (node.cell_status === "empty" || node.cell_status === "full" || node.cell_status === "unknown") {
+        return node.cell_status;
+      }
+      if (node.proximity == null) return "unknown";
+      return node.cell_empty ? "empty" : "full";
+    }
+
+    function setTileOccupancy(tile, cellStatus) {
+      const statusEl = tile.querySelector('[data-field="status"]');
+      const nextStatus = cellStatus === "empty" || cellStatus === "full" || cellStatus === "unknown"
+        ? cellStatus
+        : "unknown";
+      tile.dataset.cellStatus = nextStatus;
+
+      if (tile.dataset.tileState !== "live") return;
+
+      tile.classList.toggle("opacity-70", nextStatus === "empty");
+      if (!statusEl) return;
+
+      if (nextStatus === "empty") {
+        statusEl.textContent = "Empty";
+        statusEl.className = "rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700";
+      } else if (nextStatus === "unknown") {
+        statusEl.textContent = "No proximity";
+        statusEl.className = "rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800";
+      } else {
+        statusEl.textContent = "Full";
+        statusEl.className = "rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700";
+      }
+    }
+
     function setTileAvailability(tile, state, updatedTs = null) {
       if (updatedTs) tile.dataset.lastSeen = String(updatedTs);
-      if (tile.dataset.tileState === state) return;
+      if (tile.dataset.tileState === state) {
+        if (state === "live") setTileOccupancy(tile, tile.dataset.cellStatus || "unknown");
+        return;
+      }
 
       tile.dataset.tileState = state;
       const statusEl = tile.querySelector('[data-field="status"]');
       if (state === "live") {
         tile.classList.remove("opacity-60", "opacity-80", "bg-slate-100/80", "border-slate-300/70");
         tile.classList.add("bg-white/90", "border-white/60");
-        if (statusEl) {
-          statusEl.textContent = "Live";
-          statusEl.className = "rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700";
-        }
+        setTileOccupancy(tile, tile.dataset.cellStatus || "unknown");
       } else {
-        tile.classList.remove("bg-white/90", "border-white/60");
+        tile.classList.remove("bg-white/90", "border-white/60", "opacity-70");
         tile.classList.remove("opacity-60", "opacity-80");
         tile.classList.add(state === "stale" ? "opacity-80" : "opacity-60", "bg-slate-100/80", "border-slate-300/70");
         if (statusEl) {
@@ -230,8 +262,11 @@
       const gas = node.voc_index;
       const temperature = node.temperature_c;
       const humidity = node.humidity_rh;
+      const cellStatus = resolveCellStatus(node);
       const updatedTs = Number(node.received_at || 0);
       const referenceTs = Number(serverTime || (Date.now() / 1000));
+
+      tile.dataset.cellStatus = cellStatus;
 
       if (!isFreshReading(updatedTs, referenceTs)) {
         setTileAvailability(tile, "stale", updatedTs || null);
@@ -247,6 +282,7 @@
       setBarState(tile.querySelector('[data-bar="temperature"]'), "temperature", temperature);
       setBarState(tile.querySelector('[data-bar="humidity"]'), "humidity", humidity);
       setTileAvailability(tile, "live", updatedTs);
+      setTileOccupancy(tile, cellStatus);
     }
 
     function markStaleTiles() {

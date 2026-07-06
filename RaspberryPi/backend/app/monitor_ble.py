@@ -52,11 +52,11 @@ def print_status(
         f"Seen nodes: {len(nodes)} | "
         f"Stale threshold: {stale_seconds:.1f}s"
     )
-    print("-" * 157)
+    print("-" * 108)
     print(
-        "Node  State   Last(s)  Seq    Drops  Temp(C)  RH(%)  Prox   ALS   White   Lux    VOC   NOx  SRAWV  SRAWN  Flags  Address              Name"
+        "Node  State   Last(s)  Seq    Drops  Temp(C)  RH(%)  Prox   VOC   Flags  Address              Name"
     )
-    print("-" * 157)
+    print("-" * 108)
 
     for node_id in sorted(nodes.keys()):
         state = nodes[node_id]
@@ -76,20 +76,14 @@ def print_status(
             f"{format_optional(pkt.temperature_c):>7s}  "
             f"{format_optional(pkt.humidity_rh):>5s}  "
             f"{str(pkt.proximity) if pkt.proximity is not None else '--':>5s}  "
-            f"{str(pkt.ambient_light) if pkt.ambient_light is not None else '--':>5s}  "
-            f"{str(pkt.white_light) if pkt.white_light is not None else '--':>6s}  "
-            f"{format_optional(pkt.ambient_lux, precision=1):>5s}  "
             f"{str(pkt.voc_index) if pkt.voc_index is not None else '--':>4s}  "
-            f"{str(pkt.nox_index) if pkt.nox_index is not None else '--':>4s}  "
-            f"{str(pkt.sraw_voc) if pkt.sraw_voc is not None else '--':>5s}  "
-            f"{str(pkt.sraw_nox) if pkt.sraw_nox is not None else '--':>5s}  "
             f"0x{pkt.flags:02X}   "
             f"{state.address:18.18s}  "
             f"{state.name}"
         )
 
     missing = max(expected_nodes - len(nodes), 0)
-    print("-" * 157)
+    print("-" * 108)
     print(
         f"ONLINE={online}  STALE={stale}  MISSING={missing}  "
         f"TOTAL_RX={sum(state.received_count for state in nodes.values())}"
