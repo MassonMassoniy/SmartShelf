@@ -1,0 +1,174 @@
+{
+  "trigger_values": {
+    "3073": {
+      "name": "A1",
+      "temperature": {
+        "green": [{"min": 22, "max": 27}],
+        "yellow": [{"min": 18, "max": 22}, {"min": 27, "max": 30}],
+        "red": [{"min": 0, "max": 18}, {"min": 30, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 40, "max": 60}],
+        "yellow": [{"min": 30, "max": 40}, {"min": 60, "max": 70}],
+        "red": [{"min": 0, "max": 30}, {"min": 70, "max": 100}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 450}],
+        "yellow": [{"min": 450, "max": 700}],
+        "red": [{"min": 700, "max": 1000}]
+      }
+    },
+
+    "3077": {
+      "name": "A2",
+      "temperature": {
+        "green": [{"min": 22, "max": 27}],
+        "yellow": [{"min": 18, "max": 22}, {"min": 27, "max": 30}],
+        "red": [{"min": 0, "max": 18}, {"min": 30, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 40, "max": 60}],
+        "yellow": [{"min": 30, "max": 40}, {"min": 60, "max": 70}],
+        "red": [{"min": 0, "max": 30}, {"min": 70, "max": 100}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 450}],
+        "yellow": [{"min": 450, "max": 700}],
+        "red": [{"min": 700, "max": 1000}]
+      }
+    },
+
+    "3165": {
+      "name": "A3",
+      "temperature": {
+        "green": [{"min": 22, "max": 27}],
+        "yellow": [{"min": 18, "max": 22}, {"min": 27, "max": 30}],
+        "red": [{"min": 0, "max": 18}, {"min": 30, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 40, "max": 60}],
+        "yellow": [{"min": 30, "max": 40}, {"min": 60, "max": 70}],
+        "red": [{"min": 0, "max": 30}, {"min": 70, "max": 100}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 450}],
+        "yellow": [{"min": 450, "max": 700}],
+        "red": [{"min": 700, "max": 1000}]
+      }
+    },
+
+    "3197": {
+      "name": "B1",
+      "temperature": {
+        "green": [{"min": 22, "max": 27}],
+        "yellow": [{"min": 18, "max": 22}, {"min": 27, "max": 30}],
+        "red": [{"min": 0, "max": 18}, {"min": 30, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 40, "max": 60}],
+        "yellow": [{"min": 30, "max": 40}, {"min": 60, "max": 70}],
+        "red": [{"min": 0, "max": 30}, {"min": 70, "max": 100}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 450}],
+        "yellow": [{"min": 450, "max": 700}],
+        "red": [{"min": 700, "max": 1000}]
+      }
+    },
+
+    "16341": {
+      "name": "B2",
+      "temperature": {
+        "green": [{"min": 22, "max": 27}],
+        "yellow": [{"min": 18, "max": 22}, {"min": 27, "max": 30}],
+        "red": [{"min": 0, "max": 18}, {"min": 30, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 40, "max": 60}],
+        "yellow": [{"min": 30, "max": 40}, {"min": 60, "max": 70}],
+        "red": [{"min": 0, "max": 30}, {"min": 70, "max": 100}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 450}],
+        "yellow": [{"min": 450, "max": 700}],
+        "red": [{"min": 700, "max": 1000}]
+      }
+    },
+
+    "16645": {
+      "name": "B3",
+      "temperature": {
+        "green": [{"min": 22, "max": 27}],
+        "yellow": [{"min": 18, "max": 22}, {"min": 27, "max": 30}],
+        "red": [{"min": 0, "max": 18}, {"min": 30, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 40, "max": 60}],
+        "yellow": [{"min": 30, "max": 40}, {"min": 60, "max": 70}],
+        "red": [{"min": 0, "max": 30}, {"min": 70, "max": 100}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 450}],
+        "yellow": [{"min": 450, "max": 700}],
+        "red": [{"min": 700, "max": 1000}]
+      }
+    },
+
+    "16681": {
+      "name": "C1",
+      "temperature": {
+        "green": [{"min": 22, "max": 27}],
+        "yellow": [{"min": 18, "max": 22}, {"min": 27, "max": 30}],
+        "red": [{"min": 0, "max": 18}, {"min": 30, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 40, "max": 60}],
+        "yellow": [{"min": 30, "max": 40}, {"min": 60, "max": 70}],
+        "red": [{"min": 0, "max": 30}, {"min": 70, "max": 100}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 450}],
+        "yellow": [{"min": 450, "max": 700}],
+        "red": [{"min": 700, "max": 1000}]
+      }
+    },
+
+    "23109": {
+      "name": "C2",
+      "temperature": {
+        "green": [{"min": 22, "max": 27}],
+        "yellow": [{"min": 18, "max": 22}, {"min": 27, "max": 30}],
+        "red": [{"min": 0, "max": 18}, {"min": 30, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 40, "max": 60}],
+        "yellow": [{"min": 30, "max": 40}, {"min": 60, "max": 70}],
+        "red": [{"min": 0, "max": 30}, {"min": 70, "max": 100}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 450}],
+        "yellow": [{"min": 450, "max": 700}],
+        "red": [{"min": 700, "max": 1000}]
+      }
+    },
+
+    "36237": {
+      "name": "C3",
+      "temperature": {
+        "green": [{"min": 22, "max": 27}],
+        "yellow": [{"min": 18, "max": 22}, {"min": 27, "max": 30}],
+        "red": [{"min": 0, "max": 18}, {"min": 30, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 40, "max": 60}],
+        "yellow": [{"min": 30, "max": 40}, {"min": 60, "max": 70}],
+        "red": [{"min": 0, "max": 30}, {"min": 70, "max": 100}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 450}],
+        "yellow": [{"min": 450, "max": 700}],
+        "red": [{"min": 700, "max": 1000}]
+      }
+    }
+  }
+}
