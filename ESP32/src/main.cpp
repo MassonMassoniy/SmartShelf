@@ -16,8 +16,8 @@ constexpr uint8_t PIN_VCNL4040_INT = 9;  // XIAO ESP32-S3 D2
 constexpr uint32_t LOOP_PERIOD_MS = 1000;
 constexpr uint32_t SGP41_CONDITIONING_S = 10;
 constexpr uint16_t BLE_COMPANY_ID = 0xFFFF;  // Replace with your own company ID if available.
-constexpr uint16_t BLE_ADV_MIN_INTERVAL_UNITS = 320;  // 200 ms
-constexpr uint16_t BLE_ADV_MAX_INTERVAL_UNITS = 480;  // 300 ms
+constexpr uint16_t BLE_ADV_MIN_INTERVAL_UNITS = 160;  // 200 ms
+constexpr uint16_t BLE_ADV_MAX_INTERVAL_UNITS = 240;  // 300 ms
 
 constexpr uint8_t ADDR_SHT45 = 0x44;
 constexpr uint8_t ADDR_VCNL4040 = 0x60;
