@@ -8,18 +8,10 @@ from typing import Any
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
 from ...services.backend_service import BackendService
+from ...services.cell_config_service import CellConfigError
+from ...services.zone_evaluator import classify_zone, zone_badge_class, zone_bar_class
+from ...config.constants import PROJECT_NODE_IDS
 
-SENSOR_LABEL_BY_NODE_ID = {
-    3073: "A1",
-    3077: "A2",
-    3165: "A3",
-    3197: "B1",
-    16341: "B2",
-    16645: "B3",
-    16681: "C1",
-    23109: "C2",
-    36237: "C3",
-}
 SENSOR_LABEL_ORDER = ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"]
 LIVE_RELOAD_RELATIVE_DIRS = (
     "RaspberryPi/backend",
@@ -71,7 +63,7 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
             if last_snapshot["sensors"]:
                 sensors, readings = last_snapshot["sensors"], last_snapshot["readings"]
             else:
-                sensors, readings = _default_snapshot()
+                sensors, readings = _default_snapshot(service)
 
         return render_template(
             "index.html",
@@ -81,6 +73,9 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
             backend_api_base_url="",
             stale_seconds=service.stale_seconds,
             dev_live_reload_enabled=live_reload_enabled,
+            categories=service.cell_config.list_categories(),
+            cell_configs={cfg["node_id"]: cfg for cfg in service.cell_config.get_all_cell_configs()},
+            metric_limits=service.cell_config.get_metric_limits(),
         )
 
     @app.route("/sensor/<sensor_id>/tile")
@@ -93,7 +88,7 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
             if last_snapshot["sensors"]:
                 sensors, readings = last_snapshot["sensors"], last_snapshot["readings"]
             else:
-                sensors, readings = _default_snapshot()
+                sensors, readings = _default_snapshot(service)
 
         reading = readings.get(
             sensor_id,
@@ -118,6 +113,41 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
         except Exception:
             readings = last_snapshot["readings"]
         return jsonify(readings)
+
+    @app.get("/api/categories")
+    def categories_api() -> Response:
+        return jsonify(
+            {
+                "categories": service.cell_config.list_categories(),
+                "metric_limits": service.cell_config.get_metric_limits(),
+            }
+        )
+
+    @app.get("/api/cells/config")
+    def cells_config_api() -> Response:
+        return jsonify({"cells": service.cell_config.get_all_cell_configs()})
+
+    @app.put("/api/cells/<int:node_id>/config")
+    def update_cell_config(node_id: int) -> tuple[Response, int] | Response:
+        body = request.get_json(silent=True) or {}
+        mode = body.get("mode")
+        try:
+            if mode == "category":
+                category_id = body.get("category_id")
+                if not category_id:
+                    return jsonify({"detail": "category_id is required when mode is 'category'"}), 422
+                updated = service.cell_config.set_category(node_id, str(category_id))
+            elif mode == "custom":
+                custom_bounds = body.get("custom_bounds")
+                if not isinstance(custom_bounds, dict):
+                    return jsonify({"detail": "custom_bounds object is required when mode is 'custom'"}), 422
+                updated = service.cell_config.set_custom_bounds(node_id, custom_bounds)
+            else:
+                return jsonify({"detail": "mode must be 'category' or 'custom'"}), 422
+        except CellConfigError as exc:
+            return jsonify({"detail": str(exc)}), 422
+
+        return jsonify(updated)
 
     @app.get("/health")
     def health() -> Response:
@@ -225,8 +255,20 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
     return app
 
 
-def _map_node_reading(node: dict[str, Any]) -> dict[str, Any]:
-    return {
+def _zone_fields(node_id: int, service: BackendService, metric_values: dict[str, Any]) -> dict[str, Any]:
+    bounds = service.cell_config.get_effective_bounds(node_id)
+    fields: dict[str, Any] = {}
+    for metric, tile_field in (("temperature", "temperature"), ("humidity", "humidity"), ("gas", "gas")):
+        zone = classify_zone(metric_values.get(tile_field), bounds.get(metric) if bounds else None)
+        fields[f"{tile_field}_zone"] = zone
+        fields[f"{tile_field}_bar_class"] = zone_bar_class(zone)
+        fields[f"{tile_field}_badge_class"] = zone_badge_class(zone)
+    return fields
+
+
+def _map_node_reading(node: dict[str, Any], service: BackendService) -> dict[str, Any]:
+    node_id = node.get("node_id")
+    reading = {
         "gas": node.get("voc_index"),
         "temperature": node.get("temperature_c"),
         "humidity": node.get("humidity_rh"),
@@ -234,14 +276,17 @@ def _map_node_reading(node: dict[str, Any]) -> dict[str, Any]:
         "cell_empty": node.get("cell_empty"),
         "cell_status": node.get("cell_status"),
         "ts": int(node.get("received_at") or time.time()),
-        "node_id": node.get("node_id"),
+        "node_id": node_id,
         "address": node.get("address"),
         "name": node.get("name"),
     }
+    if node_id is not None:
+        reading.update(_zone_fields(int(node_id), service, reading))
+    return reading
 
 
-def _empty_reading(node_id: int) -> dict[str, Any]:
-    return {
+def _empty_reading(node_id: int, service: BackendService) -> dict[str, Any]:
+    reading = {
         "gas": None,
         "temperature": None,
         "humidity": None,
@@ -253,6 +298,8 @@ def _empty_reading(node_id: int) -> dict[str, Any]:
         "address": None,
         "name": None,
     }
+    reading.update(_zone_fields(node_id, service, reading))
+    return reading
 
 
 def _sensor_sort_key(sensor: dict[str, Any]) -> tuple[int, int]:
@@ -262,27 +309,31 @@ def _sensor_sort_key(sensor: dict[str, Any]) -> tuple[int, int]:
     return len(SENSOR_LABEL_ORDER), int(sensor.get("node_id") or 0)
 
 
-def _build_sensor(node_id: int) -> dict[str, Any]:
-    label = SENSOR_LABEL_BY_NODE_ID.get(node_id)
+def _build_sensor(node_id: int, service: BackendService) -> dict[str, Any]:
+    label = PROJECT_NODE_IDS.get(node_id)
     if label is None:
         label = f"Unmapped #{node_id}"
         name = label
         is_expected = False
+        cell_config = None
     else:
         name = label
         is_expected = True
+        cell_config = service.cell_config.get_cell_config(node_id)
     return {
         "id": f"node-{node_id}",
         "name": name,
         "label": label,
         "node_id": node_id,
         "is_expected": is_expected,
+        "mode": cell_config["mode"] if cell_config else None,
+        "assignment_label": (cell_config["category_name"] if cell_config else None) or "Custom",
     }
 
 
-def _default_snapshot() -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
-    sensors = [_build_sensor(node_id) for node_id in SENSOR_LABEL_BY_NODE_ID]
-    readings = {f"node-{node_id}": _empty_reading(node_id) for node_id in SENSOR_LABEL_BY_NODE_ID}
+def _default_snapshot(service: BackendService) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    sensors = [_build_sensor(node_id, service) for node_id in PROJECT_NODE_IDS]
+    readings = {f"node-{node_id}": _empty_reading(node_id, service) for node_id in PROJECT_NODE_IDS}
     sensors.sort(key=_sensor_sort_key)
     return sensors, readings
 
@@ -299,12 +350,12 @@ def _load_latest_snapshot(service: BackendService) -> tuple[list[dict[str, Any]]
         node_id = int(node_id)
         sensor_id = f"node-{node_id}"
         seen_node_ids.add(node_id)
-        readings[sensor_id] = _map_node_reading(node)
+        readings[sensor_id] = _map_node_reading(node, service)
 
-    expected_node_ids = set(SENSOR_LABEL_BY_NODE_ID.keys())
-    sensors = [_build_sensor(node_id) for node_id in expected_node_ids | seen_node_ids]
+    expected_node_ids = set(PROJECT_NODE_IDS.keys())
+    sensors = [_build_sensor(node_id, service) for node_id in expected_node_ids | seen_node_ids]
     for node_id in expected_node_ids:
-        readings.setdefault(f"node-{node_id}", _empty_reading(node_id))
+        readings.setdefault(f"node-{node_id}", _empty_reading(node_id, service))
 
     sensors.sort(key=_sensor_sort_key)
     return sensors, readings

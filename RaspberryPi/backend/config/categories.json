@@ -1,0 +1,94 @@
+{
+  "categories": {
+    "1001": {
+      "name": "Raw Meat",
+      "temperature": {
+        "green": [{"min": 0, "max": 4}],
+        "yellow": [{"min": -2, "max": 0}, {"min": 4, "max": 7}],
+        "red": [{"min": -20, "max": -2}, {"min": 7, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 85, "max": 95}],
+        "yellow": [{"min": 75, "max": 85}, {"min": 95, "max": 100}],
+        "red": [{"min": 0, "max": 75}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 150}],
+        "yellow": [{"min": 150, "max": 300}],
+        "red": [{"min": 300, "max": 1000}]
+      }
+    },
+    "1002": {
+      "name": "Raw Fish",
+      "temperature": {
+        "green": [{"min": 0, "max": 2}],
+        "yellow": [{"min": -2, "max": 0}, {"min": 2, "max": 5}],
+        "red": [{"min": -20, "max": -2}, {"min": 5, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 90, "max": 95}],
+        "yellow": [{"min": 80, "max": 90}, {"min": 95, "max": 100}],
+        "red": [{"min": 0, "max": 80}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 150}],
+        "yellow": [{"min": 150, "max": 250}],
+        "red": [{"min": 250, "max": 1000}]
+      }
+    },
+    "1003": {
+      "name": "Eggs",
+      "temperature": {
+        "green": [{"min": 1, "max": 4}],
+        "yellow": [{"min": 4, "max": 10}],
+        "red": [{"min": -20, "max": 1}, {"min": 10, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 70, "max": 80}],
+        "yellow": [{"min": 60, "max": 70}, {"min": 80, "max": 85}],
+        "red": [{"min": 0, "max": 60}, {"min": 85, "max": 100}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 100}],
+        "yellow": [{"min": 100, "max": 200}],
+        "red": [{"min": 200, "max": 1000}]
+      }
+    },
+    "1004": {
+      "name": "Bread",
+      "temperature": {
+        "green": [{"min": 15, "max": 25}],
+        "yellow": [{"min": 10, "max": 15}, {"min": 25, "max": 30}],
+        "red": [{"min": -20, "max": 10}, {"min": 30, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 30, "max": 50}],
+        "yellow": [{"min": 50, "max": 65}],
+        "red": [{"min": 0, "max": 30}, {"min": 65, "max": 100}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 120}],
+        "yellow": [{"min": 120, "max": 250}],
+        "red": [{"min": 250, "max": 1000}]
+      }
+    },
+    "1005": {
+      "name": "Fresh Produce",
+      "temperature": {
+        "green": [{"min": 1, "max": 4}],
+        "yellow": [{"min": 4, "max": 8}],
+        "red": [{"min": -20, "max": 1}, {"min": 8, "max": 100}]
+      },
+      "humidity": {
+        "green": [{"min": 90, "max": 95}],
+        "yellow": [{"min": 80, "max": 90}, {"min": 95, "max": 100}],
+        "red": [{"min": 0, "max": 80}]
+      },
+      "gas": {
+        "green": [{"min": 0, "max": 150}],
+        "yellow": [{"min": 150, "max": 300}],
+        "red": [{"min": 300, "max": 1000}]
+      }
+    }
+  }
+}

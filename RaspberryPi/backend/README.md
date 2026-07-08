@@ -98,6 +98,35 @@ python -m RaspberryPi.backend.monitor_esp_ble
 - `GET /nodes/realtime/stream?window_seconds=600` - SSE stream of rolling-window cache snapshots (1s cadence).
 - `GET /nodes/status` - online/stale and packet/drop counters per node.
 - `GET /nodes/minute-history?outliers=include|exclude&from_ts=&to_ts=&node_id=` - minute aggregates from SQLite.
+- `GET /api/categories` - predefined food-category trigger presets and metric limits.
+- `GET /api/cells/config` - current trigger bounds/category assignment for every cell.
+- `PUT /api/cells/<node_id>/config` - assign a category (`{"mode": "category", "category_id": "1001"}`) or set custom bounds (`{"mode": "custom", "custom_bounds": {...}}`) for a cell.
+
+## Trigger System & Telegram Alerts
+
+Each cell's temperature/humidity/VOC readings are classified into green/yellow/red
+zones using either a predefined food category (`config/categories.json`, read-only)
+or manually-set custom bounds. Bounds and category assignments are persisted per
+cell in `config/config.json`, which the backend rewrites whenever a cell's
+configuration changes via the API (or the Live Tiles popup in the dashboard).
+
+When a metric stays in a worse zone (green->yellow or yellow->red) continuously for
+more than `TRIGGER_SUSTAIN_SECONDS` (default 120s, see `config/constants.py`), a
+Telegram alert is sent once for that transition. Evaluation is skipped for empty
+cells (no product placed) and resets if a sensor's readings go stale.
+
+### Configuring the Telegram bot
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and note the bot token.
+2. Find your target chat id (e.g. message the bot, then check
+   `https://api.telegram.org/bot<token>/getUpdates`).
+3. Copy `config/telegram_config.example.json` to `config/telegram_config.json`
+   (gitignored) and fill in `bot_token`/`chat_id`, **or** set the
+   `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` environment variables (these take
+   precedence over the file).
+
+Until both values are configured, the backend logs a one-time warning and skips
+sending alerts - everything else keeps working normally.
 
 ## Data Storage
 

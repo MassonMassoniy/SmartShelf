@@ -114,7 +114,7 @@ def build_app(args: argparse.Namespace) -> Flask:
         expected_nodes=args.expected_nodes,
         stale_seconds=args.stale_seconds,
     )
-    service.allowed_node_ids = {int(node_id) for node_id in PROJECT_NODE_IDS}
+    service.allowed_node_ids = {int(node_id) for node_id in PROJECT_NODE_IDS.keys()}
 
     runtime = AsyncServiceRuntime(service)
 

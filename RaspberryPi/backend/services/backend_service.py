@@ -11,6 +11,9 @@ from ..ingestion.collector import BlePacketCollector, PacketEvent
 from ..ingestion.cell_occupancy import with_cell_occupancy
 from ..ingestion.protocol_decoder import STALE_SECONDS, packet_to_dict
 from ..storage.sqlite.sqlite_storage import NO_OUTLIERS_TABLE, WITH_OUTLIERS_TABLE, SQLiteStorage
+from .cell_config_service import CellConfigStore
+from .telegram_notifier import TelegramNotifier
+from .trigger_service import TriggerService
 
 
 METRIC_FIELDS = [
@@ -83,6 +86,9 @@ class BackendService:
         self.cache = TenMinuteCache(file_path=cache_path)
         self.storage = SQLiteStorage(db_path=db_path)
 
+        self.cell_config = CellConfigStore()
+        self.trigger_service = TriggerService(cell_config=self.cell_config, notifier=TelegramNotifier())
+
         self.decode_errors = 0
         self._minute_samples: Dict[tuple[int, int], List[dict]] = defaultdict(list)
         self._last_db_flush_minute_ts = minute_bucket(time.time())
@@ -128,6 +134,7 @@ class BackendService:
                     self.storage.commit()
                 self._last_db_flush_minute_ts = current_bucket
             self.cache.maybe_flush()
+            await self.trigger_service.tick(self.get_latest_nodes(), now=time.time())
             await asyncio.sleep(1)
 
     def _build_aggregate_row(

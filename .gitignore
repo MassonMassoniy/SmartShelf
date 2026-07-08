@@ -8,3 +8,4 @@ __pycache__/
 *.pyzw
 *.pyzwz
 RaspberryPi/data/
+RaspberryPi/backend/config/telegram_config.json

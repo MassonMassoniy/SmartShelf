@@ -6,6 +6,16 @@
   <title>SmartShelf Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+  <style>
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type="number"] {
+      -moz-appearance: textfield;
+    }
+  </style>
 </head>
 <body class="h-screen overflow-hidden bg-slate-950 text-slate-900">
   <div class="flex h-screen flex-col bg-[radial-gradient(circle_at_top_left,_#38bdf8_0,_transparent_28%),linear-gradient(135deg,_#0f172a_0%,_#1e293b_45%,_#0f172a_100%)] p-2">
@@ -86,6 +96,49 @@
     </main>
   </div>
 
+  <div id="cell-config-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-4">
+    <div class="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+        <div>
+          <div class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Trigger bounds</div>
+          <div id="modal-cell-title" class="text-2xl font-black leading-tight text-slate-950">--</div>
+        </div>
+        <button
+          type="button"
+          id="modal-close-btn"
+          class="flex h-11 w-11 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:scale-95"
+          aria-label="Close"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="h-5 w-5">
+            <path stroke-linecap="round" d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="flex gap-1 border-b border-slate-100 bg-slate-50 p-2">
+        <button type="button" class="modal-mode-btn flex-1 rounded-xl py-3 text-sm font-bold text-slate-500" data-mode="category">Category</button>
+        <button type="button" class="modal-mode-btn flex-1 rounded-xl py-3 text-sm font-bold text-slate-500" data-mode="custom">Custom</button>
+      </div>
+
+      <div class="min-h-0 flex-1 overflow-y-auto p-4">
+        <div id="modal-category-view" class="space-y-2">
+          <div id="modal-category-list" class="grid grid-cols-2 gap-2"></div>
+          <div id="modal-category-info" class="mt-3 hidden rounded-2xl bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-600"></div>
+        </div>
+
+        <div id="modal-custom-view" class="hidden space-y-3"></div>
+      </div>
+
+      <div class="flex items-center gap-3 border-t border-slate-100 p-4">
+        <div id="modal-error" class="hidden flex-1 text-[11px] font-semibold text-red-600"></div>
+        <div class="ml-auto flex gap-2">
+          <button type="button" id="modal-cancel-btn" class="min-h-12 rounded-xl bg-slate-100 px-5 text-sm font-bold text-slate-600 hover:bg-slate-200 active:scale-95">Cancel</button>
+          <button type="button" id="modal-save-btn" class="min-h-12 rounded-xl bg-slate-950 px-6 text-sm font-bold text-white hover:bg-slate-800 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const streamUrl = {{ backend_stream_url | tojson }};
     const apiBaseUrl = {{ backend_api_base_url | default("") | tojson }};
@@ -94,6 +147,9 @@
     const devLiveReloadEnabled = Boolean({{ dev_live_reload_enabled | default(false) | tojson }});
     const sensors = {{ sensors | tojson }};
     const sensorByNodeId = new Map(sensors.map((sensor) => [Number(sensor.node_id), sensor]));
+    const categories = {{ categories | tojson }};
+    const metricLimits = {{ metric_limits | tojson }};
+    const cellConfigs = {{ cell_configs | tojson }};
     const backendClock = document.getElementById("backend-clock");
     const streamStatus = document.getElementById("stream-status");
     let historyChart = null;
@@ -144,32 +200,39 @@
       el.textContent = nextText;
     }
 
-    function setBarState(barEl, metric, rawValue) {
+    function valueInRanges(value, ranges) {
+      if (!Array.isArray(ranges)) return false;
+      return ranges.some((band) => value >= Number(band.min) && value <= Number(band.max));
+    }
+
+    // Mirrors RaspberryPi/backend/services/zone_evaluator.py::classify_zone - keep in sync.
+    function classifyZone(value, bounds) {
+      if (value == null || !bounds) return null;
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return null;
+      if (valueInRanges(numeric, bounds.green)) return "green";
+      if (valueInRanges(numeric, bounds.yellow)) return "yellow";
+      if (valueInRanges(numeric, bounds.red)) return "red";
+      return null;
+    }
+
+    function zoneBarClass(zone) {
+      if (zone === "green") return "bg-emerald-500";
+      if (zone === "yellow") return "bg-amber-400";
+      if (zone === "red") return "bg-red-500";
+      return "bg-slate-300";
+    }
+
+    function setBarState(barEl, metric, rawValue, bounds = null) {
       if (!barEl) return;
       const value = rawValue == null ? null : Number(rawValue);
       let pct = 0;
-      let cls = "bg-slate-300";
 
-      if (metric === "temperature") {
-        pct = value == null ? 0 : clampPercent((value / 50) * 100);
-        if (value == null) cls = "bg-slate-300";
-        else if (value < 18 || value > 30) cls = "bg-red-500";
-        else if (value < 22 || value > 27) cls = "bg-amber-400";
-        else cls = "bg-emerald-500";
-      } else if (metric === "humidity") {
-        pct = value == null ? 0 : clampPercent(value);
-        if (value == null) cls = "bg-slate-300";
-        else if (value < 30 || value > 70) cls = "bg-red-500";
-        else if (value < 40 || value > 60) cls = "bg-amber-400";
-        else cls = "bg-emerald-500";
-      } else if (metric === "gas") {
-        pct = value == null ? 0 : clampPercent((value / 1000) * 100);
-        if (value == null) cls = "bg-slate-300";
-        else if (value > 700) cls = "bg-red-500";
-        else if (value > 450) cls = "bg-amber-400";
-        else cls = "bg-emerald-500";
-      }
+      if (metric === "temperature") pct = value == null ? 0 : clampPercent(((value + 20) / 120) * 100);
+      else if (metric === "humidity") pct = value == null ? 0 : clampPercent(value);
+      else if (metric === "gas") pct = value == null ? 0 : clampPercent((value / 1000) * 100);
 
+      const cls = zoneBarClass(classifyZone(value, bounds));
       const nextWidth = `${pct.toFixed(1)}%`;
       const nextClass = `${cls} h-1.5 rounded-full transition-none`;
       if (barEl.style.width !== nextWidth) barEl.style.width = nextWidth;
@@ -255,7 +318,8 @@
     }
 
     function updateTile(node, serverTime) {
-      const sensorId = `node-${Number(node.node_id)}`;
+      const nodeId = Number(node.node_id);
+      const sensorId = `node-${nodeId}`;
       const tile = document.querySelector(`[data-sensor-id="${sensorId}"]`);
       if (!tile) return;
 
@@ -265,6 +329,7 @@
       const cellStatus = resolveCellStatus(node);
       const updatedTs = Number(node.received_at || 0);
       const referenceTs = Number(serverTime || (Date.now() / 1000));
+      const bounds = cellConfigs[nodeId] ? cellConfigs[nodeId].bounds : null;
 
       tile.dataset.cellStatus = cellStatus;
 
@@ -278,9 +343,9 @@
       setTextIfChanged(tile.querySelector('[data-field="humidity"]'), humidity == null ? "--" : String(humidity));
       setTextIfChanged(tile.querySelector('[data-field="updated"]'), formatTime(updatedTs));
 
-      setBarState(tile.querySelector('[data-bar="gas"]'), "gas", gas);
-      setBarState(tile.querySelector('[data-bar="temperature"]'), "temperature", temperature);
-      setBarState(tile.querySelector('[data-bar="humidity"]'), "humidity", humidity);
+      setBarState(tile.querySelector('[data-bar="gas"]'), "gas", gas, bounds ? bounds.gas : null);
+      setBarState(tile.querySelector('[data-bar="temperature"]'), "temperature", temperature, bounds ? bounds.temperature : null);
+      setBarState(tile.querySelector('[data-bar="humidity"]'), "humidity", humidity, bounds ? bounds.humidity : null);
       setTileAvailability(tile, "live", updatedTs);
       setTileOccupancy(tile, cellStatus);
     }
@@ -295,6 +360,266 @@
         }
         const nextState = now - lastSeen > staleDisplayThresholdSeconds ? "stale" : "live";
         if (tile.dataset.tileState !== nextState) setTileAvailability(tile, nextState, lastSeen);
+      });
+    }
+
+    const METRICS_ORDER = ["temperature", "humidity", "gas"];
+    const METRIC_META = {
+      temperature: { label: "Temperature", unit: "\u00b0C" },
+      humidity: { label: "Humidity", unit: "%" },
+      gas: { label: "VOC index", unit: "" },
+    };
+    const CUSTOM_FIELDS = ["yellow_low", "green_low", "green_high", "yellow_high"];
+    const CUSTOM_FIELD_LABELS = {
+      yellow_low: "Yellow low",
+      green_low: "Green low",
+      green_high: "Green high",
+      yellow_high: "Yellow high",
+    };
+
+    let modalNodeId = null;
+    let modalMode = "category";
+    let modalSelectedCategoryId = null;
+    let modalCustomValues = {};
+
+    const modalEl = document.getElementById("cell-config-modal");
+    const modalTitleEl = document.getElementById("modal-cell-title");
+    const modalCategoryViewEl = document.getElementById("modal-category-view");
+    const modalCategoryListEl = document.getElementById("modal-category-list");
+    const modalCategoryInfoEl = document.getElementById("modal-category-info");
+    const modalCustomViewEl = document.getElementById("modal-custom-view");
+    const modalErrorEl = document.getElementById("modal-error");
+    const modalSaveBtn = document.getElementById("modal-save-btn");
+
+    function rangesToText(ranges, unit) {
+      if (!Array.isArray(ranges) || !ranges.length) return "\u2014";
+      return ranges.map((band) => `${band.min}\u2013${band.max}${unit}`).join(", ");
+    }
+
+    function renderCategoryList() {
+      modalCategoryListEl.innerHTML = Object.entries(categories)
+        .map(([id, category]) => {
+          const active = id === modalSelectedCategoryId;
+          const classes = active
+            ? "border-slate-950 bg-slate-950 text-white"
+            : "border-slate-200 bg-white text-slate-700";
+          return `<button type="button" class="category-card rounded-2xl border-2 p-3 text-center text-sm font-bold transition active:scale-95 ${classes}" data-category-id="${id}">${category.name}</button>`;
+        })
+        .join("");
+      modalCategoryListEl.querySelectorAll(".category-card").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          modalSelectedCategoryId = btn.dataset.categoryId;
+          renderCategoryList();
+          renderCategoryInfo();
+          updateSaveEnabled();
+        });
+      });
+    }
+
+    function renderCategoryInfo() {
+      if (!modalSelectedCategoryId || !categories[modalSelectedCategoryId]) {
+        modalCategoryInfoEl.classList.add("hidden");
+        modalCategoryInfoEl.innerHTML = "";
+        return;
+      }
+      const category = categories[modalSelectedCategoryId];
+      modalCategoryInfoEl.classList.remove("hidden");
+      modalCategoryInfoEl.innerHTML = `
+        <div class="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Fixed bounds (read-only)</div>
+        ${METRICS_ORDER.map((metric) => `
+          <div class="mb-1.5 last:mb-0">
+            <div class="font-bold text-slate-700">${METRIC_META[metric].label}</div>
+            <div class="flex flex-wrap gap-x-2">
+              <span class="text-emerald-600">Green ${rangesToText(category[metric].green, METRIC_META[metric].unit)}</span>
+              <span class="text-amber-600">Yellow ${rangesToText(category[metric].yellow, METRIC_META[metric].unit)}</span>
+              <span class="text-red-600">Red ${rangesToText(category[metric].red, METRIC_META[metric].unit)}</span>
+            </div>
+          </div>
+        `).join("")}
+      `;
+    }
+
+    function clampToLimits(metric, value) {
+      const limits = metricLimits[metric];
+      return Math.min(limits.max, Math.max(limits.min, value));
+    }
+
+    function renderCustomView() {
+      modalCustomViewEl.innerHTML = METRICS_ORDER.map((metric) => {
+        const meta = METRIC_META[metric];
+        const limits = metricLimits[metric];
+        return `
+          <div class="rounded-2xl bg-slate-50 p-3">
+            <div class="mb-2 text-sm font-bold text-slate-700">${meta.label}${meta.unit ? ` (${meta.unit})` : ""}</div>
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              ${CUSTOM_FIELDS.map((field) => `
+                <div>
+                  <div class="mb-1 text-center text-[9px] font-bold uppercase tracking-wide text-slate-400">${CUSTOM_FIELD_LABELS[field]}</div>
+                  <div class="flex items-center justify-center gap-1">
+                    <button type="button" class="stepper-btn flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-lg font-black text-slate-600 shadow-sm active:scale-95" data-metric="${metric}" data-field="${field}" data-delta="-1" aria-label="Decrease ${CUSTOM_FIELD_LABELS[field]}">\u2212</button>
+                    <input
+                      type="number"
+                      inputmode="decimal"
+                      class="custom-input h-11 w-16 min-w-0 rounded-xl border border-slate-200 text-center text-sm font-bold text-slate-950"
+                      data-metric="${metric}"
+                      data-field="${field}"
+                      min="${limits.min}"
+                      max="${limits.max}"
+                    />
+                    <button type="button" class="stepper-btn flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-lg font-black text-slate-600 shadow-sm active:scale-95" data-metric="${metric}" data-field="${field}" data-delta="1" aria-label="Increase ${CUSTOM_FIELD_LABELS[field]}">+</button>
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      METRICS_ORDER.forEach((metric) => {
+        CUSTOM_FIELDS.forEach((field) => {
+          const input = modalCustomViewEl.querySelector(`.custom-input[data-metric="${metric}"][data-field="${field}"]`);
+          if (input) input.value = modalCustomValues[metric][field];
+        });
+      });
+
+      modalCustomViewEl.querySelectorAll(".stepper-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const { metric, field, delta } = btn.dataset;
+          setCustomValue(metric, field, modalCustomValues[metric][field] + Number(delta));
+        });
+      });
+      modalCustomViewEl.querySelectorAll(".custom-input").forEach((input) => {
+        input.addEventListener("change", () => {
+          const { metric, field } = input.dataset;
+          setCustomValue(metric, field, Number(input.value));
+        });
+      });
+    }
+
+    function setCustomValue(metric, field, value) {
+      const safeValue = Number.isFinite(value) ? value : modalCustomValues[metric][field];
+      modalCustomValues[metric][field] = clampToLimits(metric, Math.round(safeValue));
+      const input = modalCustomViewEl.querySelector(`.custom-input[data-metric="${metric}"][data-field="${field}"]`);
+      if (input) input.value = modalCustomValues[metric][field];
+      validateCustomValues();
+    }
+
+    function validateCustomValues() {
+      let firstError = null;
+      METRICS_ORDER.forEach((metric) => {
+        const v = modalCustomValues[metric];
+        const ordered = v.yellow_low <= v.green_low && v.green_low <= v.green_high && v.green_high <= v.yellow_high;
+        if (!ordered && !firstError) {
+          firstError = `${METRIC_META[metric].label}: values must satisfy yellow low \u2264 green low \u2264 green high \u2264 yellow high`;
+        }
+      });
+      if (firstError) {
+        modalErrorEl.textContent = firstError;
+        modalErrorEl.classList.remove("hidden");
+      } else {
+        modalErrorEl.classList.add("hidden");
+      }
+      updateSaveEnabled(!firstError);
+      return !firstError;
+    }
+
+    function updateSaveEnabled(customValid = true) {
+      modalSaveBtn.disabled = modalMode === "category" ? !modalSelectedCategoryId : !customValid;
+    }
+
+    function setModalMode(mode) {
+      modalMode = mode;
+      document.querySelectorAll(".modal-mode-btn").forEach((btn) => {
+        const active = btn.dataset.mode === mode;
+        btn.classList.toggle("bg-white", active);
+        btn.classList.toggle("shadow-sm", active);
+        btn.classList.toggle("text-slate-950", active);
+        btn.classList.toggle("text-slate-500", !active);
+      });
+      modalCategoryViewEl.classList.toggle("hidden", mode !== "category");
+      modalCustomViewEl.classList.toggle("hidden", mode !== "custom");
+      modalErrorEl.classList.add("hidden");
+      if (mode === "custom") validateCustomValues();
+      else updateSaveEnabled();
+    }
+
+    function openCellConfigModal(nodeId) {
+      const cfg = cellConfigs[nodeId];
+      if (!cfg) return;
+      modalNodeId = nodeId;
+      modalTitleEl.textContent = cfg.label;
+      modalSelectedCategoryId = cfg.mode === "category" ? cfg.category_id : null;
+      modalCustomValues = {};
+      METRICS_ORDER.forEach((metric) => {
+        modalCustomValues[metric] = { ...cfg.simple_bounds[metric] };
+      });
+
+      renderCategoryList();
+      renderCategoryInfo();
+      renderCustomView();
+      setModalMode(cfg.mode === "category" ? "category" : "custom");
+
+      modalEl.classList.remove("hidden");
+      modalEl.classList.add("flex");
+    }
+
+    function closeCellConfigModal() {
+      modalEl.classList.add("hidden");
+      modalEl.classList.remove("flex");
+      modalNodeId = null;
+    }
+
+    function applyCellConfigToTile(nodeId, cfg) {
+      cellConfigs[nodeId] = cfg;
+      const tile = document.querySelector(`[data-sensor-id="node-${nodeId}"]`);
+      if (!tile) return;
+      const label = tile.querySelector('[data-field="assignment"]');
+      if (label) label.textContent = cfg.category_name || "Custom";
+    }
+
+    async function saveCellConfig() {
+      if (modalNodeId == null) return;
+      let body;
+      if (modalMode === "category") {
+        if (!modalSelectedCategoryId) return;
+        body = { mode: "category", category_id: modalSelectedCategoryId };
+      } else {
+        if (!validateCustomValues()) return;
+        body = { mode: "custom", custom_bounds: modalCustomValues };
+      }
+
+      modalSaveBtn.disabled = true;
+      modalErrorEl.classList.add("hidden");
+      try {
+        const response = await fetch(apiUrl(`/api/cells/${modalNodeId}/config`), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail || "Failed to save trigger bounds");
+        applyCellConfigToTile(modalNodeId, payload);
+        closeCellConfigModal();
+      } catch (err) {
+        modalErrorEl.textContent = err.message || "Failed to save trigger bounds";
+        modalErrorEl.classList.remove("hidden");
+      } finally {
+        updateSaveEnabled(modalMode !== "custom" || validateCustomValues());
+      }
+    }
+
+    function initCellConfigModal() {
+      document.querySelectorAll(".cell-config-btn").forEach((btn) => {
+        btn.addEventListener("click", () => openCellConfigModal(Number(btn.dataset.nodeId)));
+      });
+      document.querySelectorAll(".modal-mode-btn").forEach((btn) => {
+        btn.addEventListener("click", () => setModalMode(btn.dataset.mode));
+      });
+      document.getElementById("modal-close-btn").addEventListener("click", closeCellConfigModal);
+      document.getElementById("modal-cancel-btn").addEventListener("click", closeCellConfigModal);
+      modalSaveBtn.addEventListener("click", saveCellConfig);
+      modalEl.addEventListener("click", (event) => {
+        if (event.target === modalEl) closeCellConfigModal();
       });
     }
 
@@ -801,6 +1126,7 @@
     initControls();
     initChartHoverTracking();
     initTileBars();
+    initCellConfigModal();
     switchTab("tiles");
     markStaleTiles();
     setInterval(markStaleTiles, 1000);
