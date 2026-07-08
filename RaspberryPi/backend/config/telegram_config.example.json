@@ -1,0 +1,5 @@
+{
+  "_comment": "Copy this file to telegram_config.json (gitignored) and fill in your bot token/chat id, or set the TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID environment variables instead. telegram_config.json is auto-created with empty values on first run if missing.",
+  "bot_token": "",
+  "chat_id": ""
+}
