@@ -1,0 +1,14 @@
+{
+  "_comment": "Copy this file to email_config.json (gitignored) if missing, then fill in SMTP settings. Gmail: enable 2FA, create an App Password at https://myaccount.google.com/apppasswords. Defaults below work for Gmail. Or set EMAIL_SMTP_HOST, EMAIL_USERNAME, EMAIL_PASSWORD, EMAIL_FROM, EMAIL_RECIPIENTS (comma-separated) env vars instead.",
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 587,
+  "use_tls": true,
+  "username": "",
+  "password": "",
+  "from_address": "",
+  "from_name": "SmartShelf",
+  "recipients": [
+    "",
+    ""
+  ]
+}

@@ -4,7 +4,7 @@ STALE_SECONDS = 4.0
 EMPTY_CELL_PROXIMITY_THRESHOLD = 20
 
 # How long a metric must remain continuously in a worse zone (green->yellow or
-# yellow->red) before the trigger system fires a Telegram alert.
+# yellow->red) before the trigger system fires an email alert.
 TRIGGER_SUSTAIN_SECONDS = 120
 
 # Absolute floor/ceiling per metric. Used as the outer edge of the "red" zone

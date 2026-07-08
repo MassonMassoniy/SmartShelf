@@ -8,4 +8,4 @@ __pycache__/
 *.pyzw
 *.pyzwz
 RaspberryPi/data/
-RaspberryPi/backend/config/telegram_config.json
+RaspberryPi/backend/config/email_config.json

@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from ..config.constants import TRIGGER_SUSTAIN_SECONDS
 from .cell_config_service import CellConfigStore
-from .telegram_notifier import TelegramNotifier
+from .email_notifier import EmailNotifier
 from .zone_evaluator import Zone, classify_zone, is_degradation
 
 METRIC_FIELD_MAP = {
@@ -26,7 +26,7 @@ def _empty_state() -> dict[str, Any]:
 
 class TriggerService:
     """Tracks sustained green->yellow / yellow->red transitions per cell/metric
-    and fires a Telegram alert once a degradation has persisted for
+    and fires an email alert once a degradation has persisted for
     `TRIGGER_SUSTAIN_SECONDS`. Evaluation is skipped for empty cells (no product
     to protect) and state resets whenever a reading is missing/stale or the
     zone changes (the sustain timer only counts continuous time in one zone).
@@ -35,7 +35,7 @@ class TriggerService:
     def __init__(
         self,
         cell_config: CellConfigStore,
-        notifier: TelegramNotifier,
+        notifier: EmailNotifier,
         sustain_seconds: float = TRIGGER_SUSTAIN_SECONDS,
     ) -> None:
         self._cell_config = cell_config
@@ -97,18 +97,19 @@ class TriggerService:
         label = cell_config["label"] if cell_config else str(node_id)
         assignment = (cell_config or {}).get("category_name") or "Custom bounds"
         metric_label, unit = METRIC_DISPLAY[metric]
-        previous_label = (state["previous_zone"] or "unknown").upper()
-        new_label = zone.upper()
+        previous_zone = state["previous_zone"] or "unknown"
         try:
             value_str = f"{float(value):.1f}{unit}"
         except (TypeError, ValueError):
             value_str = "--"
 
         sustain_minutes = self._sustain_seconds / 60
-        message = (
-            f"SmartShelf Alert: Cell {label} ({assignment})\n"
-            f"{metric_label} moved {previous_label} -> {new_label} "
-            f"(sustained {sustain_minutes:g}+ min)\n"
-            f"Current reading: {value_str}"
+        await self._notifier.send_alert(
+            cell_label=label,
+            assignment=assignment,
+            metric_label=metric_label,
+            previous_zone=previous_zone,
+            new_zone=zone,
+            value_str=value_str,
+            sustain_minutes=sustain_minutes,
         )
-        await self._notifier.send(message)
