@@ -6,17 +6,17 @@ Zone = Literal["green", "yellow", "red"]
 ZONE_ORDER: tuple[Zone, ...] = ("green", "yellow", "red")
 
 _BAR_CLASS_BY_ZONE = {
-    "green": "bg-emerald-500",
-    "yellow": "bg-amber-400",
-    "red": "bg-red-500",
+    "green": "bar-ok",
+    "yellow": "bar-warn",
+    "red": "bar-bad",
 }
 _BADGE_CLASS_BY_ZONE = {
-    "green": "bg-emerald-100 text-emerald-700",
-    "yellow": "bg-amber-100 text-amber-800",
-    "red": "bg-red-100 text-red-700",
+    "green": "status-pill--full",
+    "yellow": "status-pill--unknown",
+    "red": "status-pill--empty",
 }
-_UNKNOWN_BAR_CLASS = "bg-slate-300"
-_UNKNOWN_BADGE_CLASS = "bg-slate-200 text-slate-500"
+_UNKNOWN_BAR_CLASS = "bar-neutral"
+_UNKNOWN_BADGE_CLASS = "status-pill--offline"
 
 
 def _value_in_ranges(value: float, ranges: Any) -> bool:
