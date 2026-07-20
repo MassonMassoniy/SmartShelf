@@ -27,9 +27,11 @@ def _empty_state() -> dict[str, Any]:
 class TriggerService:
     """Tracks sustained green->yellow / yellow->red transitions per cell/metric
     and fires an email alert once a degradation has persisted for
-    `TRIGGER_SUSTAIN_SECONDS`. Evaluation is skipped for empty cells (no product
-    to protect) and state resets whenever a reading is missing/stale or the
-    zone changes (the sustain timer only counts continuous time in one zone).
+    `TRIGGER_SUSTAIN_SECONDS`. Alerts require an observed previous zone of green
+    or yellow (cold-start / unknown readings do not notify). Evaluation is
+    skipped for empty cells (no product to protect) and state resets whenever a
+    reading is missing/stale or the zone changes (the sustain timer only counts
+    continuous time in one zone).
     """
 
     def __init__(
@@ -75,10 +77,12 @@ class TriggerService:
                     state["zone_since"] = now
                     state["notified"] = False
 
+                previous_zone = state["previous_zone"]
                 if (
                     zone in ("yellow", "red")
+                    and previous_zone in ("green", "yellow")
                     and not state["notified"]
-                    and is_degradation(state["previous_zone"], zone)
+                    and is_degradation(previous_zone, zone)
                     and state["zone_since"] is not None
                     and (now - state["zone_since"]) >= self._sustain_seconds
                 ):
@@ -97,7 +101,9 @@ class TriggerService:
         label = cell_config["label"] if cell_config else str(node_id)
         assignment = (cell_config or {}).get("category_name") or "Custom bounds"
         metric_label, unit = METRIC_DISPLAY[metric]
-        previous_zone = state["previous_zone"] or "unknown"
+        previous_zone = state["previous_zone"]
+        if previous_zone not in ("green", "yellow"):
+            return
         try:
             value_str = f"{float(value):.1f}{unit}"
         except (TypeError, ValueError):
