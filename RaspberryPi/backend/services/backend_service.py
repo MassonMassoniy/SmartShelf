@@ -86,7 +86,7 @@ class BackendService:
         self.cache = TenMinuteCache(file_path=cache_path)
         self.storage = SQLiteStorage(db_path=db_path)
 
-        self.cell_config = CellConfigStore()
+        self.cell_config = CellConfigStore(storage=self.storage)
         self.trigger_service = TriggerService(cell_config=self.cell_config, notifier=EmailNotifier())
 
         self.decode_errors = 0
@@ -215,6 +215,7 @@ class BackendService:
         if self._running:
             return
         self.storage.start()
+        self.cell_config.load()
         self.cache.load()
         await self.collector.start()
         self._running = True

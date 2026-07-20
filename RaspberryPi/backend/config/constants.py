@@ -5,7 +5,7 @@ EMPTY_CELL_PROXIMITY_THRESHOLD = 20
 
 # How long a metric must remain continuously in a worse zone (green->yellow or
 # yellow->red) before the trigger system fires an email alert.
-TRIGGER_SUSTAIN_SECONDS = 120
+TRIGGER_SUSTAIN_SECONDS = 1
 
 # Absolute floor/ceiling per metric. Used as the outer edge of the "red" zone
 # for cells in custom bounds mode, and as the min/max for the bounds editor.

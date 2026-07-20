@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import time
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 WITH_OUTLIERS_TABLE = "minute_avg_with_outliers"
 NO_OUTLIERS_TABLE = "minute_avg_no_outliers"
+CELL_CONFIG_TABLE = "cell_config"
 
 
 class SQLiteStorage:
@@ -85,6 +87,20 @@ class SQLiteStorage:
                 dropped_sequences_total INTEGER NOT NULL,
                 address TEXT,
                 name TEXT
+            )
+            """
+        )
+        self.conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {CELL_CONFIG_TABLE} (
+                node_id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                category_id TEXT,
+                temperature_json TEXT NOT NULL,
+                humidity_json TEXT NOT NULL,
+                gas_json TEXT NOT NULL,
+                updated_at REAL NOT NULL
             )
             """
         )
@@ -198,4 +214,69 @@ class SQLiteStorage:
         assert self.conn is not None
         rows = self.conn.execute("SELECT COUNT(*) AS c FROM node_health").fetchone()
         return {"known_nodes": int(rows["c"]), "checked_at": time.time()}
+
+    def count_cell_configs(self) -> int:
+        assert self.conn is not None
+        row = self.conn.execute(f"SELECT COUNT(*) AS c FROM {CELL_CONFIG_TABLE}").fetchone()
+        return int(row["c"])
+
+    def load_cell_configs(self) -> dict[int, dict[str, Any]]:
+        assert self.conn is not None
+        rows = self.conn.execute(
+            f"""
+            SELECT node_id, name, mode, category_id,
+                   temperature_json, humidity_json, gas_json
+            FROM {CELL_CONFIG_TABLE}
+            ORDER BY node_id ASC
+            """
+        ).fetchall()
+        cells: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            cells[int(row["node_id"])] = {
+                "name": row["name"],
+                "mode": row["mode"],
+                "category_id": row["category_id"],
+                "temperature": json.loads(row["temperature_json"]),
+                "humidity": json.loads(row["humidity_json"]),
+                "gas": json.loads(row["gas_json"]),
+            }
+        return cells
+
+    def upsert_cell_config(self, node_id: int, entry: dict[str, Any], auto_commit: bool = True) -> None:
+        assert self.conn is not None
+        self.conn.execute(
+            f"""
+            INSERT INTO {CELL_CONFIG_TABLE} (
+                node_id, name, mode, category_id,
+                temperature_json, humidity_json, gas_json, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(node_id) DO UPDATE SET
+                name=excluded.name,
+                mode=excluded.mode,
+                category_id=excluded.category_id,
+                temperature_json=excluded.temperature_json,
+                humidity_json=excluded.humidity_json,
+                gas_json=excluded.gas_json,
+                updated_at=excluded.updated_at
+            """,
+            (
+                int(node_id),
+                entry["name"],
+                entry["mode"],
+                entry.get("category_id"),
+                json.dumps(entry["temperature"]),
+                json.dumps(entry["humidity"]),
+                json.dumps(entry["gas"]),
+                time.time(),
+            ),
+        )
+        if auto_commit:
+            self.conn.commit()
+
+    def replace_cell_configs(self, cells: dict[int, dict[str, Any]]) -> None:
+        assert self.conn is not None
+        self.conn.execute(f"DELETE FROM {CELL_CONFIG_TABLE}")
+        for node_id, entry in cells.items():
+            self.upsert_cell_config(node_id, entry, auto_commit=False)
+        self.conn.commit()
 
