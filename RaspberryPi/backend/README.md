@@ -102,7 +102,7 @@ python -m RaspberryPi.backend.monitor_esp_ble
 - `GET /api/cells/config` - current trigger bounds/category assignment for every cell.
 - `PUT /api/cells/<node_id>/config` - assign a category (`{"mode": "category", "category_id": "1001"}`) or set custom bounds (`{"mode": "custom", "custom_bounds": {...}}`) for a cell.
 
-## Trigger System & Telegram Alerts
+## Trigger System & Email Alerts
 
 Each cell's temperature/humidity/VOC readings are classified into green/yellow/red
 zones using either a predefined food category (`config/categories.json`, read-only)
@@ -111,22 +111,38 @@ cell in `config/config.json`, which the backend rewrites whenever a cell's
 configuration changes via the API (or the Live Tiles popup in the dashboard).
 
 When a metric stays in a worse zone (green->yellow or yellow->red) continuously for
-more than `TRIGGER_SUSTAIN_SECONDS` (default 120s, see `config/constants.py`), a
-Telegram alert is sent once for that transition. Evaluation is skipped for empty
+more than `TRIGGER_SUSTAIN_SECONDS` (default 120s, see `config/constants.py`), an
+email alert is sent once for that transition. Evaluation is skipped for empty
 cells (no product placed) and resets if a sensor's readings go stale.
 
-### Configuring the Telegram bot
+### Configuring email alerts (SMTP)
 
-1. Create a bot with [@BotFather](https://t.me/BotFather) and note the bot token.
-2. Find your target chat id (e.g. message the bot, then check
-   `https://api.telegram.org/bot<token>/getUpdates`).
-3. Copy `config/telegram_config.example.json` to `config/telegram_config.json`
-   (gitignored) and fill in `bot_token`/`chat_id`, **or** set the
-   `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` environment variables (these take
-   precedence over the file).
+Easiest path with Gmail:
 
-Until both values are configured, the backend logs a one-time warning and skips
-sending alerts - everything else keeps working normally.
+1. Enable 2-Step Verification on the Google account.
+2. Create an [App Password](https://myaccount.google.com/apppasswords) (16 characters).
+3. Copy `config/email_config.example.json` to `config/email_config.json` (gitignored)
+   and fill in:
+   - `username` / `password` — Gmail address + app password
+   - `from_address` — usually the same Gmail address
+   - `recipients` — one or more email addresses to notify
+4. Defaults (`smtp.gmail.com`, port `587`, `use_tls: true`) work for Gmail.
+   Other providers: set `smtp_host` / `smtp_port` accordingly.
+
+Or set environment variables instead (they take precedence over the file):
+`EMAIL_SMTP_HOST`, `EMAIL_SMTP_PORT`, `EMAIL_USE_TLS`, `EMAIL_USERNAME`,
+`EMAIL_PASSWORD`, `EMAIL_FROM`, `EMAIL_FROM_NAME`, `EMAIL_RECIPIENTS`
+(comma-separated list).
+
+Until SMTP credentials and at least one recipient are configured, the backend
+logs a one-time warning and skips sending alerts — everything else keeps working
+normally.
+
+To send a test email after filling the config:
+
+```bash
+python RaspberryPi/backend/scripts/test_email.py
+```
 
 ## Data Storage
 

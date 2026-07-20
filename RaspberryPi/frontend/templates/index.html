@@ -2,45 +2,868 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>SmartShelf Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
   <style>
+    :root {
+      --bg: oklch(0.94 0.006 250);
+      --surface: oklch(0.985 0.003 250);
+      --surface-muted: oklch(0.925 0.006 250);
+      --ink: oklch(0.28 0.02 255);
+      --ink-muted: oklch(0.48 0.015 255);
+      --ink-faint: oklch(0.62 0.012 255);
+      --line: oklch(0.86 0.008 250);
+      --accent: oklch(0.42 0.065 250);
+      --accent-soft: oklch(0.93 0.02 250);
+      --ok: oklch(0.48 0.09 155);
+      --ok-soft: oklch(0.94 0.03 155);
+      --warn: oklch(0.58 0.11 75);
+      --warn-soft: oklch(0.94 0.035 75);
+      --bad: oklch(0.52 0.13 25);
+      --bad-soft: oklch(0.94 0.035 25);
+      --header-h: 2.75rem;
+      --gap: 0.375rem;
+      --touch: 2.75rem;
+      --radius: 0.5rem;
+      --font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      font-family: var(--font);
+      color: var(--ink);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+    }
+
     input[type="number"]::-webkit-inner-spin-button,
     input[type="number"]::-webkit-outer-spin-button {
       -webkit-appearance: none;
       margin: 0;
     }
-    input[type="number"] {
-      -moz-appearance: textfield;
+    input[type="number"] { -moz-appearance: textfield; }
+
+    .app-shell {
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+      min-height: 100vh;
+      padding:
+        max(0.5rem, env(safe-area-inset-top))
+        max(0.5rem, env(safe-area-inset-right))
+        max(0.5rem, env(safe-area-inset-bottom))
+        max(0.5rem, env(safe-area-inset-left));
+      gap: var(--gap);
+      background:
+        linear-gradient(180deg, oklch(0.955 0.007 250) 0%, var(--bg) 42%),
+        var(--bg);
+    }
+
+    .app-header {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.5rem;
+      align-items: center;
+      min-height: var(--header-h);
+      padding: 0.4rem 0.65rem;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 0.4rem;
+      background: var(--ink);
+      color: oklch(0.92 0.02 250);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+    }
+
+    .brand-title {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+    }
+
+    .brand-sub {
+      margin: 0.1rem 0 0;
+      font-size: 0.68rem;
+      font-weight: 500;
+      color: var(--ink-muted);
+    }
+
+    .tab-nav {
+      display: flex;
+      gap: 0.2rem;
+      padding: 0.2rem;
+      background: var(--surface-muted);
+      border-radius: calc(var(--radius) - 0.1rem);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .tab-button {
+      flex: 1 0 auto;
+      min-height: 2.25rem;
+      padding: 0.4rem 0.75rem;
+      border: 0;
+      border-radius: 0.35rem;
+      background: transparent;
+      color: var(--ink-muted);
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 160ms ease-out, color 160ms ease-out;
+    }
+
+    .tab-button.is-active {
+      background: var(--surface);
+      color: var(--ink);
+      box-shadow: inset 0 0 0 1px var(--accent);
+    }
+
+    .header-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      align-items: center;
+      justify-content: flex-start;
+    }
+
+    .meta-chip,
+    .stream-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 1.75rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 0.3rem;
+      font-size: 0.68rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .meta-chip {
+      background: var(--surface-muted);
+      color: var(--ink-muted);
+    }
+
+    .stream-pill {
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    .stream-pill.is-live {
+      background: var(--ok-soft);
+      color: var(--ok);
+    }
+
+    .stream-pill.is-reconnecting {
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    .app-main {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tab-panel {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tab-panel.hidden { display: none !important; }
+
+    .tiles-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: var(--gap);
+      align-content: start;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 0.25rem;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .sensor-tile {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      min-height: 10.5rem;
+      padding: 0.55rem 0.65rem 0.5rem;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      transition: opacity 160ms ease-out, border-color 160ms ease-out, background 160ms ease-out;
+    }
+
+    .sensor-tile.is-empty { opacity: 0.78; }
+    .sensor-tile.is-stale {
+      background: var(--surface-muted);
+      opacity: 0.88;
+    }
+    .sensor-tile.is-offline {
+      background: var(--surface-muted);
+      opacity: 0.72;
+    }
+
+    .cell-config-btn {
+      position: absolute;
+      top: 0.3rem;
+      right: 0.3rem;
+      z-index: 2;
+      display: grid;
+      place-items: center;
+      width: var(--touch);
+      height: var(--touch);
+      border: 1px solid var(--line);
+      border-radius: 0.4rem;
+      background: var(--surface);
+      color: var(--ink-muted);
+      cursor: pointer;
+      transition: color 160ms ease-out, background 160ms ease-out;
+    }
+
+    .cell-config-btn svg {
+      width: 1.15rem;
+      height: 1.15rem;
+    }
+
+    .cell-config-btn:active {
+      background: var(--surface-muted);
+      color: var(--ink);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .cell-config-btn:hover {
+        color: var(--ink);
+        background: var(--accent-soft);
+      }
+      .tab-button:hover:not(.is-active) { color: var(--ink); }
+    }
+
+    .tile-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding-right: calc(var(--touch) + 0.25rem);
+    }
+
+    .tile-identity { min-width: 0; }
+
+    .tile-name {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+
+    .tile-meta {
+      margin: 0.15rem 0 0;
+      font-size: 0.62rem;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+    }
+
+    .tile-assignment {
+      margin: 0.15rem 0 0;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--accent);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status-pill {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      min-height: 1.35rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 0.25rem;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .status-pill--full { background: var(--ok-soft); color: var(--ok); }
+    .status-pill--empty { background: var(--bad-soft); color: var(--bad); }
+    .status-pill--unknown { background: var(--warn-soft); color: var(--warn); }
+    .status-pill--offline,
+    .status-pill--stale { background: var(--surface-muted); color: var(--ink-muted); }
+
+    .tile-metrics {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      flex: 1 1 auto;
+    }
+
+    .metric-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.5rem;
+      margin-bottom: 0.15rem;
+      font-size: 0.7rem;
+    }
+
+    .metric-label {
+      font-weight: 600;
+      color: var(--ink-muted);
+    }
+
+    .metric-value {
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--ink);
+    }
+
+    .metric-track {
+      height: 0.35rem;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--surface-muted);
+    }
+
+    .metric-bar {
+      height: 100%;
+      border-radius: 999px;
+      transition: none;
+    }
+
+    .bar-ok, .bg-emerald-500 { background: var(--ok); }
+    .bar-warn, .bg-amber-400 { background: var(--warn); }
+    .bar-bad, .bg-red-500 { background: var(--bad); }
+    .bar-neutral, .bg-slate-300 { background: oklch(0.78 0.01 250); }
+
+    .tile-foot {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+      font-size: 0.62rem;
+      font-weight: 500;
+      color: var(--ink-faint);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .chart-panel {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 18rem;
+      padding: 0.55rem;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      gap: 0.5rem;
+    }
+
+    .chart-controls {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.4rem;
+      flex-shrink: 0;
+    }
+
+    .field-control,
+    .chart-controls select,
+    .chart-controls input[type="datetime-local"] {
+      width: 100%;
+      min-height: 2.5rem;
+      padding: 0.4rem 0.6rem;
+      border: 1px solid var(--line);
+      border-radius: 0.4rem;
+      background: var(--surface);
+      color: var(--ink);
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .metrics-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.65rem 1rem;
+      min-height: 2.5rem;
+      padding: 0.45rem 0.7rem;
+      border-radius: 0.4rem;
+      background: var(--surface-muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--ink-muted);
+    }
+
+    .metrics-bar label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      min-height: 1.75rem;
+      cursor: pointer;
+    }
+
+    .chart-stage {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 14rem;
+      padding: 0.4rem;
+      border-radius: 0.4rem;
+      background: var(--surface-muted);
+    }
+
+    .chart-empty {
+      pointer-events: none;
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      text-align: center;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--ink-faint);
+    }
+
+    .chart-empty.flex { display: flex; }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+      background: oklch(0.28 0.02 255 / 0.45);
+    }
+
+    .modal-backdrop.flex { display: flex; }
+
+    .modal-sheet {
+      display: flex;
+      flex-direction: column;
+      width: min(100%, 32rem);
+      max-height: 100%;
+      overflow: hidden;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 0.65rem;
+      box-shadow: 0 18px 40px oklch(0.28 0.02 255 / 0.18);
+    }
+
+    .modal-header,
+    .modal-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+
+    .modal-footer {
+      border-bottom: 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .modal-kicker {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+    }
+
+    #modal-cell-title {
+      margin: 0.15rem 0 0;
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+
+    .icon-btn {
+      display: grid;
+      place-items: center;
+      width: var(--touch);
+      height: var(--touch);
+      border: 0;
+      border-radius: 0.4rem;
+      background: transparent;
+      color: var(--ink-muted);
+      cursor: pointer;
+    }
+
+    .icon-btn:active,
+    .icon-btn:hover { background: var(--surface-muted); color: var(--ink); }
+
+    .icon-btn svg { width: 1.15rem; height: 1.15rem; }
+
+    .modal-modes {
+      display: flex;
+      gap: 0.25rem;
+      padding: 0.45rem;
+      background: var(--surface-muted);
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+
+    .modal-mode-btn {
+      flex: 1;
+      min-height: 2.75rem;
+      border: 0;
+      border-radius: 0.4rem;
+      background: transparent;
+      color: var(--ink-muted);
+      font: inherit;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .modal-mode-btn.is-active {
+      background: var(--surface);
+      color: var(--ink);
+      box-shadow: 0 0 0 1px var(--line);
+    }
+
+    .modal-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 0.85rem;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    #modal-category-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.5rem;
+    }
+
+    .category-card {
+      min-height: 3rem;
+      padding: 0.7rem 0.6rem;
+      border: 1px solid var(--line);
+      border-radius: 0.45rem;
+      background: var(--surface);
+      color: var(--ink);
+      font: inherit;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .category-card.is-active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: oklch(0.97 0.005 250);
+    }
+
+    #modal-category-info {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      border-radius: 0.45rem;
+      background: var(--surface-muted);
+      font-size: 0.72rem;
+      line-height: 1.45;
+      color: var(--ink-muted);
+    }
+
+    #modal-category-info.hidden,
+    #modal-custom-view.hidden,
+    #modal-category-view.hidden,
+    #modal-error.hidden { display: none !important; }
+
+    .custom-metric-block {
+      margin-bottom: 0.65rem;
+      padding: 0.75rem;
+      border-radius: 0.45rem;
+      background: var(--surface-muted);
+    }
+
+    .custom-metric-block:last-child { margin-bottom: 0; }
+
+    .custom-metric-title {
+      margin: 0 0 0.55rem;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    .custom-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.65rem;
+    }
+
+    .custom-field-label {
+      margin-bottom: 0.3rem;
+      text-align: center;
+      font-size: 0.58rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+    }
+
+    .stepper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+    }
+
+    .stepper-btn {
+      display: grid;
+      place-items: center;
+      width: var(--touch);
+      height: var(--touch);
+      border: 1px solid var(--line);
+      border-radius: 0.4rem;
+      background: var(--surface);
+      color: var(--ink-muted);
+      font: inherit;
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .custom-input {
+      width: 4rem;
+      height: var(--touch);
+      border: 1px solid var(--line);
+      border-radius: 0.4rem;
+      background: var(--surface);
+      color: var(--ink);
+      font: inherit;
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #modal-error {
+      flex: 1;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--bad);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 0.45rem;
+      margin-left: auto;
+    }
+
+    .btn {
+      min-height: 2.75rem;
+      padding: 0.55rem 1.1rem;
+      border: 0;
+      border-radius: 0.4rem;
+      font: inherit;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .btn-secondary {
+      background: var(--surface-muted);
+      color: var(--ink-muted);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: oklch(0.97 0.01 250);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .zone-ok { color: var(--ok); }
+    .zone-warn { color: var(--warn); }
+    .zone-bad { color: var(--bad); }
+
+    @media (min-width: 640px) {
+      .tiles-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .chart-controls {
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+      }
+      #history-sensor { grid-column: span 4; }
+      #history-range { grid-column: span 2; }
+      #history-from, #history-to { grid-column: span 3; }
+      #history-metrics { grid-column: span 10; }
+      #history-outliers { grid-column: span 2; }
+      #realtime-sensor { grid-column: span 9; }
+      #realtime-window { grid-column: span 3; }
+      #realtime-metrics { grid-column: span 12; }
+      .custom-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+
+    @media (min-width: 900px) {
+      .app-header {
+        grid-template-columns: minmax(10rem, 1fr) auto minmax(10rem, 1fr);
+        gap: 0.75rem;
+      }
+      .header-meta { justify-content: flex-end; }
+      .tiles-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    /* Primary panel: 1024x600 and similar landscape HMIs */
+    @media (min-width: 1000px) and (min-height: 560px) and (max-height: 720px) {
+      :root {
+        --header-h: 2.5rem;
+        --gap: 0.3rem;
+        --touch: 2.5rem;
+      }
+
+      .app-shell {
+        height: 100dvh;
+        height: 100vh;
+        overflow: hidden;
+        padding: 0.35rem;
+      }
+
+      .app-header {
+        min-height: var(--header-h);
+        padding: 0.25rem 0.5rem;
+      }
+
+      .brand-sub { display: none; }
+
+      .tab-button {
+        min-height: 2rem;
+        font-size: 0.68rem;
+        padding: 0.3rem 0.65rem;
+      }
+
+      .tiles-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: repeat(3, minmax(0, 1fr));
+        height: 100%;
+        overflow: hidden;
+        align-content: stretch;
+      }
+
+      .sensor-tile {
+        min-height: 0;
+        height: 100%;
+        padding: 0.4rem 0.5rem 0.35rem;
+        gap: 0.3rem;
+      }
+
+      .tile-name { font-size: 0.85rem; }
+      .metric-label-row { font-size: 0.65rem; }
+      .metric-track { height: 0.28rem; }
+      .tile-metrics { gap: 0.22rem; }
+      .chart-panel {
+        min-height: 0;
+        padding: 0.4rem;
+        gap: 0.35rem;
+      }
+      .chart-stage { min-height: 0; }
+      .chart-controls { gap: 0.3rem; }
+      .field-control,
+      .chart-controls select,
+      .chart-controls input[type="datetime-local"] {
+        min-height: 2.15rem;
+        font-size: 0.72rem;
+        padding: 0.3rem 0.5rem;
+      }
+      .metrics-bar {
+        min-height: 2.15rem;
+        padding: 0.3rem 0.55rem;
+        font-size: 0.7rem;
+      }
+    }
+
+    @media (min-width: 1000px) and (min-height: 721px) {
+      .tiles-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-auto-rows: minmax(11rem, auto);
+      }
+      .app-shell { min-height: 100dvh; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        transition: none !important;
+        animation: none !important;
+      }
     }
   </style>
 </head>
-<body class="h-screen overflow-hidden bg-slate-950 text-slate-900">
-  <div class="flex h-screen flex-col bg-[radial-gradient(circle_at_top_left,_#38bdf8_0,_transparent_28%),linear-gradient(135deg,_#0f172a_0%,_#1e293b_45%,_#0f172a_100%)] p-2">
-    <header class="mb-2 flex h-12 shrink-0 items-center justify-between rounded-2xl border border-white/10 bg-white/90 px-3 shadow-xl shadow-slate-950/20 backdrop-blur">
-      <div class="flex items-center gap-3">
-        <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-950 text-sm font-black text-cyan-300">SS</div>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">SS</div>
         <div>
-          <h1 class="text-base font-black leading-tight tracking-tight">SmartShelf</h1>
-          <p class="text-[11px] font-medium text-slate-500">9-node live sensor dashboard</p>
+          <h1 class="brand-title">SmartShelf</h1>
+          <p class="brand-sub">9-node live sensor dashboard</p>
         </div>
       </div>
-      <nav class="flex rounded-full bg-slate-100 p-1 text-xs font-bold text-slate-500">
-        <button class="tab-button rounded-full px-3 py-1.5 text-slate-950 shadow-sm" data-tab="tiles">Live Tiles</button>
-        <button class="tab-button rounded-full px-3 py-1.5" data-tab="history">Minute History</button>
-        <button class="tab-button rounded-full px-3 py-1.5" data-tab="realtime">Realtime Cache</button>
+      <nav class="tab-nav" aria-label="Dashboard views">
+        <button type="button" class="tab-button is-active" data-tab="tiles">Live Tiles</button>
+        <button type="button" class="tab-button" data-tab="history">Minute History</button>
+        <button type="button" class="tab-button" data-tab="realtime">Realtime Cache</button>
       </nav>
-      <div class="flex items-center gap-2 text-[11px] font-semibold">
-        <span id="backend-clock" class="rounded-full bg-slate-100 px-2 py-1 text-slate-600">--:--:--</span>
-        <span id="stream-status" class="rounded-full bg-amber-100 px-2 py-1 text-amber-700">connecting</span>
+      <div class="header-meta">
+        <span id="backend-clock" class="meta-chip">--:--:--</span>
+        <span id="stream-status" class="stream-pill">connecting</span>
       </div>
     </header>
 
-    <main class="min-h-0 flex-1">
-      <section id="tab-tiles" class="tab-panel h-full">
-        <div class="grid h-full grid-cols-3 grid-rows-3 gap-2">
+    <main class="app-main">
+      <section id="tab-tiles" class="tab-panel">
+        <div class="tiles-grid">
           {% for sensor in sensors %}
             {% if loop.index <= 9 or not sensor.is_expected %}
               {% set reading = readings.get(sensor.id) %}
@@ -50,90 +873,84 @@
         </div>
       </section>
 
-      <section id="tab-history" class="tab-panel hidden h-full">
-        <div class="flex h-full flex-col rounded-2xl border border-white/20 bg-white/95 p-2 shadow-xl shadow-slate-950/20">
-          <div class="mb-2 grid shrink-0 grid-cols-12 gap-2 text-xs">
-            <select id="history-sensor" class="col-span-4 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
-            <select id="history-range" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
+      <section id="tab-history" class="tab-panel hidden">
+        <div class="chart-panel">
+          <div class="chart-controls">
+            <select id="history-sensor" class="field-control"></select>
+            <select id="history-range" class="field-control">
               <option value="3600">Last 1h</option>
               <option value="21600">Last 6h</option>
               <option value="86400" selected>Last 24h</option>
               <option value="604800">Last 7d</option>
               <option value="custom">Custom</option>
             </select>
-            <input id="history-from" type="datetime-local" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold" />
-            <input id="history-to" type="datetime-local" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold" />
-            <div id="history-metrics" class="col-span-10 flex flex-wrap items-center gap-3 rounded-xl bg-slate-100 px-3 py-1.5 font-semibold text-slate-600"></div>
-            <select id="history-outliers" class="col-span-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
+            <input id="history-from" type="datetime-local" class="field-control" />
+            <input id="history-to" type="datetime-local" class="field-control" />
+            <div id="history-metrics" class="metrics-bar"></div>
+            <select id="history-outliers" class="field-control">
               <option value="include">Include outliers</option>
               <option value="exclude">Exclude outliers</option>
             </select>
           </div>
-          <div class="relative min-h-0 flex-1 rounded-2xl bg-slate-50 p-2">
+          <div class="chart-stage">
             <canvas id="history-chart"></canvas>
-            <div id="history-empty" class="pointer-events-none absolute inset-0 hidden items-center justify-center text-sm font-bold text-slate-400">No minute history for this selection</div>
+            <div id="history-empty" class="chart-empty">No minute history for this selection</div>
           </div>
         </div>
       </section>
 
-      <section id="tab-realtime" class="tab-panel hidden h-full">
-        <div class="flex h-full flex-col rounded-2xl border border-white/20 bg-white/95 p-2 shadow-xl shadow-slate-950/20">
-          <div class="mb-2 grid shrink-0 grid-cols-12 gap-2 text-xs">
-            <select id="realtime-sensor" class="col-span-9 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold"></select>
-            <select id="realtime-window" class="col-span-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 font-semibold">
+      <section id="tab-realtime" class="tab-panel hidden">
+        <div class="chart-panel">
+          <div class="chart-controls">
+            <select id="realtime-sensor" class="field-control"></select>
+            <select id="realtime-window" class="field-control">
               <option value="60">Last 1m</option>
               <option value="300">Last 5m</option>
               <option value="600" selected>Last 10m</option>
             </select>
-            <div id="realtime-metrics" class="col-span-12 flex flex-wrap items-center gap-3 rounded-xl bg-slate-100 px-3 py-1.5 font-semibold text-slate-600"></div>
+            <div id="realtime-metrics" class="metrics-bar"></div>
           </div>
-          <div class="relative min-h-0 flex-1 rounded-2xl bg-slate-50 p-2">
+          <div class="chart-stage">
             <canvas id="realtime-chart"></canvas>
-            <div id="realtime-empty" class="pointer-events-none absolute inset-0 hidden items-center justify-center text-sm font-bold text-slate-400">Waiting for realtime cache data</div>
+            <div id="realtime-empty" class="chart-empty">Waiting for realtime cache data</div>
           </div>
         </div>
       </section>
     </main>
   </div>
 
-  <div id="cell-config-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-4">
-    <div class="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
-      <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+  <div id="cell-config-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-cell-title">
+    <div class="modal-sheet">
+      <div class="modal-header">
         <div>
-          <div class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Trigger bounds</div>
-          <div id="modal-cell-title" class="text-2xl font-black leading-tight text-slate-950">--</div>
+          <div class="modal-kicker">Trigger bounds</div>
+          <div id="modal-cell-title">--</div>
         </div>
-        <button
-          type="button"
-          id="modal-close-btn"
-          class="flex h-11 w-11 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:scale-95"
-          aria-label="Close"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="h-5 w-5">
+        <button type="button" id="modal-close-btn" class="icon-btn" aria-label="Close">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
             <path stroke-linecap="round" d="M6 6l12 12M18 6 6 18" />
           </svg>
         </button>
       </div>
 
-      <div class="flex gap-1 border-b border-slate-100 bg-slate-50 p-2">
-        <button type="button" class="modal-mode-btn flex-1 rounded-xl py-3 text-sm font-bold text-slate-500" data-mode="category">Category</button>
-        <button type="button" class="modal-mode-btn flex-1 rounded-xl py-3 text-sm font-bold text-slate-500" data-mode="custom">Custom</button>
+      <div class="modal-modes">
+        <button type="button" class="modal-mode-btn" data-mode="category">Category</button>
+        <button type="button" class="modal-mode-btn" data-mode="custom">Custom</button>
       </div>
 
-      <div class="min-h-0 flex-1 overflow-y-auto p-4">
-        <div id="modal-category-view" class="space-y-2">
-          <div id="modal-category-list" class="grid grid-cols-2 gap-2"></div>
-          <div id="modal-category-info" class="mt-3 hidden rounded-2xl bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-600"></div>
+      <div class="modal-body">
+        <div id="modal-category-view">
+          <div id="modal-category-list"></div>
+          <div id="modal-category-info" class="hidden"></div>
         </div>
-
-        <div id="modal-custom-view" class="hidden space-y-3"></div>
+        <div id="modal-custom-view" class="hidden"></div>
       </div>
 
-      <div class="flex items-center gap-3 border-t border-slate-100 p-4">
-        <div id="modal-error" class="hidden flex-1 text-[11px] font-semibold text-red-600"></div>
-        <div class="ml-auto flex gap-2">
-          <button type="button" id="modal-cancel-btn" class="min-h-12 rounded-xl bg-slate-100 px-5 text-sm font-bold text-slate-600 hover:bg-slate-200 active:scale-95">Cancel</button>
-          <button type="button" id="modal-save-btn" class="min-h-12 rounded-xl bg-slate-950 px-6 text-sm font-bold text-white hover:bg-slate-800 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40">Save</button>
+      <div class="modal-footer">
+        <div id="modal-error" class="hidden"></div>
+        <div class="modal-actions">
+          <button type="button" id="modal-cancel-btn" class="btn btn-secondary">Cancel</button>
+          <button type="button" id="modal-save-btn" class="btn btn-primary">Save</button>
         </div>
       </div>
     </div>
@@ -161,12 +978,12 @@
     const chartHoverState = { history: false, realtime: false };
 
     const metrics = [
-      { field: "temperature_c", tileField: "temperature", label: "Temperature", unit: "°C", color: "#ef4444" },
-      { field: "humidity_rh", tileField: "humidity", label: "Humidity", unit: "%", color: "#0ea5e9" },
-      { field: "voc_index", tileField: "gas", label: "VOC Index", unit: "", color: "#10b981" },
+      { field: "temperature_c", tileField: "temperature", label: "Temperature", unit: "°C", color: "#b54a3a" },
+      { field: "humidity_rh", tileField: "humidity", label: "Humidity", unit: "%", color: "#3d5f8a" },
+      { field: "voc_index", tileField: "gas", label: "VOC Index", unit: "", color: "#3f7a5c" },
     ];
     const emaBaseAlpha = 0.1;
-    const palette = ["#0891b2", "#7c3aed", "#dc2626", "#16a34a", "#ea580c", "#2563eb", "#be123c", "#4f46e5", "#0f766e", "#64748b"];
+    const palette = ["#3d5f8a", "#6b5b4a", "#b54a3a", "#3f7a5c", "#8a6a3d", "#4a5f7a", "#7a4a5a", "#4f5d75", "#5a6b5a", "#6b6b6b"];
     const metricSelectionState = {
       history: { single: new Set(metrics.map((metric) => metric.field)), all: metrics[0].field },
       realtime: { single: new Set(metrics.map((metric) => metric.field)), all: metrics[0].field },
@@ -217,10 +1034,10 @@
     }
 
     function zoneBarClass(zone) {
-      if (zone === "green") return "bg-emerald-500";
-      if (zone === "yellow") return "bg-amber-400";
-      if (zone === "red") return "bg-red-500";
-      return "bg-slate-300";
+      if (zone === "green") return "bar-ok";
+      if (zone === "yellow") return "bar-warn";
+      if (zone === "red") return "bar-bad";
+      return "bar-neutral";
     }
 
     function setBarState(barEl, metric, rawValue, bounds = null) {
@@ -234,7 +1051,7 @@
 
       const cls = zoneBarClass(classifyZone(value, bounds));
       const nextWidth = `${pct.toFixed(1)}%`;
-      const nextClass = `${cls} h-1.5 rounded-full transition-none`;
+      const nextClass = `${cls} metric-bar`;
       if (barEl.style.width !== nextWidth) barEl.style.width = nextWidth;
       if (barEl.className !== nextClass) barEl.className = nextClass;
     }
@@ -277,18 +1094,18 @@
 
       if (tile.dataset.tileState !== "live") return;
 
-      tile.classList.toggle("opacity-70", nextStatus === "empty");
+      tile.classList.toggle("is-empty", nextStatus === "empty");
       if (!statusEl) return;
 
       if (nextStatus === "empty") {
         statusEl.textContent = "Empty";
-        statusEl.className = "rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700";
+        statusEl.className = "status-pill status-pill--empty";
       } else if (nextStatus === "unknown") {
         statusEl.textContent = "No proximity";
-        statusEl.className = "rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800";
+        statusEl.className = "status-pill status-pill--unknown";
       } else {
         statusEl.textContent = "Full";
-        statusEl.className = "rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700";
+        statusEl.className = "status-pill status-pill--full";
       }
     }
 
@@ -301,17 +1118,15 @@
 
       tile.dataset.tileState = state;
       const statusEl = tile.querySelector('[data-field="status"]');
+      tile.classList.remove("is-live", "is-stale", "is-offline", "is-empty");
       if (state === "live") {
-        tile.classList.remove("opacity-60", "opacity-80", "bg-slate-100/80", "border-slate-300/70");
-        tile.classList.add("bg-white/90", "border-white/60");
+        tile.classList.add("is-live");
         setTileOccupancy(tile, tile.dataset.cellStatus || "unknown");
       } else {
-        tile.classList.remove("bg-white/90", "border-white/60", "opacity-70");
-        tile.classList.remove("opacity-60", "opacity-80");
-        tile.classList.add(state === "stale" ? "opacity-80" : "opacity-60", "bg-slate-100/80", "border-slate-300/70");
+        tile.classList.add(state === "stale" ? "is-stale" : "is-offline");
         if (statusEl) {
           statusEl.textContent = state === "stale" ? "Stale" : "Offline";
-          statusEl.className = "rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500";
+          statusEl.className = `status-pill ${state === "stale" ? "status-pill--stale" : "status-pill--offline"}`;
         }
         clearTileReading(tile, updatedTs);
       }
@@ -400,10 +1215,7 @@
       modalCategoryListEl.innerHTML = Object.entries(categories)
         .map(([id, category]) => {
           const active = id === modalSelectedCategoryId;
-          const classes = active
-            ? "border-slate-950 bg-slate-950 text-white"
-            : "border-slate-200 bg-white text-slate-700";
-          return `<button type="button" class="category-card rounded-2xl border-2 p-3 text-center text-sm font-bold transition active:scale-95 ${classes}" data-category-id="${id}">${category.name}</button>`;
+          return `<button type="button" class="category-card${active ? " is-active" : ""}" data-category-id="${id}">${category.name}</button>`;
         })
         .join("");
       modalCategoryListEl.querySelectorAll(".category-card").forEach((btn) => {
@@ -425,14 +1237,14 @@
       const category = categories[modalSelectedCategoryId];
       modalCategoryInfoEl.classList.remove("hidden");
       modalCategoryInfoEl.innerHTML = `
-        <div class="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Fixed bounds (read-only)</div>
+        <div class="modal-kicker" style="margin-bottom:0.45rem">Fixed bounds (read-only)</div>
         ${METRICS_ORDER.map((metric) => `
-          <div class="mb-1.5 last:mb-0">
-            <div class="font-bold text-slate-700">${METRIC_META[metric].label}</div>
-            <div class="flex flex-wrap gap-x-2">
-              <span class="text-emerald-600">Green ${rangesToText(category[metric].green, METRIC_META[metric].unit)}</span>
-              <span class="text-amber-600">Yellow ${rangesToText(category[metric].yellow, METRIC_META[metric].unit)}</span>
-              <span class="text-red-600">Red ${rangesToText(category[metric].red, METRIC_META[metric].unit)}</span>
+          <div style="margin-bottom:0.45rem">
+            <div style="font-weight:700;color:var(--ink)">${METRIC_META[metric].label}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:0.35rem 0.65rem">
+              <span class="zone-ok">Green ${rangesToText(category[metric].green, METRIC_META[metric].unit)}</span>
+              <span class="zone-warn">Yellow ${rangesToText(category[metric].yellow, METRIC_META[metric].unit)}</span>
+              <span class="zone-bad">Red ${rangesToText(category[metric].red, METRIC_META[metric].unit)}</span>
             </div>
           </div>
         `).join("")}
@@ -449,24 +1261,24 @@
         const meta = METRIC_META[metric];
         const limits = metricLimits[metric];
         return `
-          <div class="rounded-2xl bg-slate-50 p-3">
-            <div class="mb-2 text-sm font-bold text-slate-700">${meta.label}${meta.unit ? ` (${meta.unit})` : ""}</div>
-            <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div class="custom-metric-block">
+            <div class="custom-metric-title">${meta.label}${meta.unit ? ` (${meta.unit})` : ""}</div>
+            <div class="custom-fields">
               ${CUSTOM_FIELDS.map((field) => `
                 <div>
-                  <div class="mb-1 text-center text-[9px] font-bold uppercase tracking-wide text-slate-400">${CUSTOM_FIELD_LABELS[field]}</div>
-                  <div class="flex items-center justify-center gap-1">
-                    <button type="button" class="stepper-btn flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-lg font-black text-slate-600 shadow-sm active:scale-95" data-metric="${metric}" data-field="${field}" data-delta="-1" aria-label="Decrease ${CUSTOM_FIELD_LABELS[field]}">\u2212</button>
+                  <div class="custom-field-label">${CUSTOM_FIELD_LABELS[field]}</div>
+                  <div class="stepper">
+                    <button type="button" class="stepper-btn" data-metric="${metric}" data-field="${field}" data-delta="-1" aria-label="Decrease ${CUSTOM_FIELD_LABELS[field]}">\u2212</button>
                     <input
                       type="number"
                       inputmode="decimal"
-                      class="custom-input h-11 w-16 min-w-0 rounded-xl border border-slate-200 text-center text-sm font-bold text-slate-950"
+                      class="custom-input"
                       data-metric="${metric}"
                       data-field="${field}"
                       min="${limits.min}"
                       max="${limits.max}"
                     />
-                    <button type="button" class="stepper-btn flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-lg font-black text-slate-600 shadow-sm active:scale-95" data-metric="${metric}" data-field="${field}" data-delta="1" aria-label="Increase ${CUSTOM_FIELD_LABELS[field]}">+</button>
+                    <button type="button" class="stepper-btn" data-metric="${metric}" data-field="${field}" data-delta="1" aria-label="Increase ${CUSTOM_FIELD_LABELS[field]}">+</button>
                   </div>
                 </div>
               `).join("")}
@@ -530,11 +1342,7 @@
     function setModalMode(mode) {
       modalMode = mode;
       document.querySelectorAll(".modal-mode-btn").forEach((btn) => {
-        const active = btn.dataset.mode === mode;
-        btn.classList.toggle("bg-white", active);
-        btn.classList.toggle("shadow-sm", active);
-        btn.classList.toggle("text-slate-950", active);
-        btn.classList.toggle("text-slate-500", !active);
+        btn.classList.toggle("is-active", btn.dataset.mode === mode);
       });
       modalCategoryViewEl.classList.toggle("hidden", mode !== "category");
       modalCustomViewEl.classList.toggle("hidden", mode !== "custom");
@@ -650,25 +1458,25 @@
       if (isAllSensors) {
         const selected = state.all || metrics[0].field;
         container.innerHTML = metrics.map((metric) => `
-          <label class="flex items-center gap-1">
+          <label>
             <input
               type="radio"
               name="${prefix}-metric-radio"
               value="${metric.field}"
               ${metric.field === selected ? "checked" : ""}
-              class="metric-option rounded-full border-slate-300 text-slate-950"
+              class="metric-option"
             >
             <span>${metric.label}</span>
           </label>
         `).join("");
       } else {
         container.innerHTML = metrics.map((metric) => `
-          <label class="flex items-center gap-1">
+          <label>
             <input
               type="checkbox"
               value="${metric.field}"
               ${state.single.has(metric.field) ? "checked" : ""}
-              class="metric-option rounded border-slate-300 text-slate-950"
+              class="metric-option"
             >
             <span>${metric.label}</span>
           </label>
@@ -771,8 +1579,8 @@
 
     function buildYAxisConfig(datasets) {
       const base = {
-        ticks: { font: { size: 10 } },
-        grid: { color: "#e2e8f0" },
+        ticks: { font: { size: 10, family: "IBM Plex Sans, Segoe UI, system-ui, sans-serif" }, color: "#6b7280" },
+        grid: { color: "#e4e1da" },
       };
       if (!datasets.length) return base;
 
@@ -819,8 +1627,8 @@
 
     function buildAutoYAxisConfig() {
       return {
-        ticks: { font: { size: 10 } },
-        grid: { color: "#e2e8f0" },
+        ticks: { font: { size: 10, family: "IBM Plex Sans, Segoe UI, system-ui, sans-serif" }, color: "#6b7280" },
+        grid: { color: "#e4e1da" },
       };
     }
 
@@ -891,11 +1699,11 @@
             animation: false,
             interaction: { intersect: false, mode: "index" },
             plugins: {
-              legend: { labels: { boxWidth: 10, font: { size: 11 } } },
+              legend: { labels: { boxWidth: 10, font: { size: 11, family: "IBM Plex Sans, Segoe UI, system-ui, sans-serif" }, color: "#4b5563" } },
               tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y ?? "--"}` } },
             },
             scales: {
-              x: { ticks: { maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
+              x: { ticks: { maxTicksLimit: 8, font: { size: 10, family: "IBM Plex Sans, Segoe UI, system-ui, sans-serif" }, color: "#6b7280" }, grid: { display: false } },
               y: yAxisConfig,
             },
           },
@@ -1044,10 +1852,7 @@
       document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
       document.getElementById(`tab-${tab}`).classList.remove("hidden");
       document.querySelectorAll(".tab-button").forEach((button) => {
-        const active = button.dataset.tab === tab;
-        button.classList.toggle("bg-white", active);
-        button.classList.toggle("text-slate-950", active);
-        button.classList.toggle("shadow-sm", active);
+        button.classList.toggle("is-active", button.dataset.tab === tab);
       });
       if (tab === "history") {
         closeRealtimeStream();
@@ -1103,7 +1908,7 @@
     const evtSource = new EventSource(streamUrl);
     evtSource.onopen = () => {
       streamStatus.textContent = "live";
-      streamStatus.className = "rounded-full bg-emerald-100 px-2 py-1 text-emerald-700";
+      streamStatus.className = "stream-pill is-live";
     };
     evtSource.onmessage = (event) => {
       const payload = JSON.parse(event.data);
@@ -1113,7 +1918,7 @@
     };
     evtSource.onerror = () => {
       streamStatus.textContent = "reconnecting";
-      streamStatus.className = "rounded-full bg-amber-100 px-2 py-1 text-amber-700";
+      streamStatus.className = "stream-pill is-reconnecting";
     };
 
     if (devLiveReloadEnabled) {

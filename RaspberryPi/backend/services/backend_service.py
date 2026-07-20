@@ -12,7 +12,7 @@ from ..ingestion.cell_occupancy import with_cell_occupancy
 from ..ingestion.protocol_decoder import STALE_SECONDS, packet_to_dict
 from ..storage.sqlite.sqlite_storage import NO_OUTLIERS_TABLE, WITH_OUTLIERS_TABLE, SQLiteStorage
 from .cell_config_service import CellConfigStore
-from .telegram_notifier import TelegramNotifier
+from .email_notifier import EmailNotifier
 from .trigger_service import TriggerService
 
 
@@ -87,7 +87,7 @@ class BackendService:
         self.storage = SQLiteStorage(db_path=db_path)
 
         self.cell_config = CellConfigStore()
-        self.trigger_service = TriggerService(cell_config=self.cell_config, notifier=TelegramNotifier())
+        self.trigger_service = TriggerService(cell_config=self.cell_config, notifier=EmailNotifier())
 
         self.decode_errors = 0
         self._minute_samples: Dict[tuple[int, int], List[dict]] = defaultdict(list)
