@@ -9,3 +9,7 @@ __pycache__/
 *.pyzwz
 RaspberryPi/data/
 RaspberryPi/backend/config/email_config.json
+.codex
+.cursor
+.impeccable
+data/

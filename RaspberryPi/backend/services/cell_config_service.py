@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from ..config.constants import METRIC_LIMITS, PROJECT_NODE_IDS
+from ..storage.sqlite.sqlite_storage import SQLiteStorage
 
 METRICS = ("temperature", "humidity", "gas")
 ZONES = ("green", "yellow", "red")
@@ -18,7 +18,7 @@ _DEFAULT_SIMPLE_BOUNDS = {
 }
 
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
-_DEFAULT_CONFIG_PATH = _BACKEND_DIR / "config" / "config.json"
+_DEFAULT_SEED_CONFIG_PATH = _BACKEND_DIR / "config" / "config.json"
 _DEFAULT_CATEGORIES_PATH = _BACKEND_DIR / "config" / "categories.json"
 
 
@@ -101,23 +101,35 @@ def _default_canonical_bounds() -> dict[str, dict[str, list[dict[str, float]]]]:
 class CellConfigStore:
     """Loads/persists per-cell trigger bounds (category assignment or custom bounds).
 
-    Backed by `config/config.json` (mutable, rewritten on every change) and the
-    read-only `config/categories.json` predefined food-category catalog.
+    Backed by the `cell_config` table in SQLite. On first startup with an empty
+    table, seeds from `config/config.json` when present (one-time migration).
+    Categories remain in read-only `config/categories.json`.
     """
 
     def __init__(
         self,
-        config_path: str | Path = _DEFAULT_CONFIG_PATH,
+        storage: SQLiteStorage,
+        seed_config_path: str | Path = _DEFAULT_SEED_CONFIG_PATH,
         categories_path: str | Path = _DEFAULT_CATEGORIES_PATH,
     ) -> None:
-        self._config_path = Path(config_path)
+        self._storage = storage
+        self._seed_config_path = Path(seed_config_path)
         self._categories_path = Path(categories_path)
         self._lock = threading.Lock()
         self._categories: dict[str, dict[str, Any]] = {}
         self._cells: dict[int, dict[str, Any]] = {}
+        self._loaded = False
 
-        self._load_categories()
-        self._load_cells()
+    def load(self) -> None:
+        """Load categories + cell configs from SQLite (seed from JSON if empty)."""
+        with self._lock:
+            self._load_categories()
+            self._load_cells()
+            self._loaded = True
+
+    def _ensure_loaded(self) -> None:
+        if not self._loaded:
+            raise RuntimeError("CellConfigStore.load() must be called after SQLiteStorage.start()")
 
     # -- loading -----------------------------------------------------------------
 
@@ -133,68 +145,70 @@ class CellConfigStore:
             return
         self._categories = dict(payload.get("categories", {})) if isinstance(payload, dict) else {}
 
+    def _read_seed_trigger_values(self) -> dict[str, Any]:
+        if not self._seed_config_path.exists():
+            return {}
+        try:
+            with open(self._seed_config_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            if isinstance(payload, dict):
+                return dict(payload.get("trigger_values", {}))
+        except (OSError, ValueError):
+            return {}
+        return {}
+
+    def _entry_from_raw(self, node_id: int, label: str, entry: Any) -> dict[str, Any] | None:
+        if not isinstance(entry, dict) or not all(metric in entry for metric in METRICS):
+            return None
+        return {
+            "name": entry.get("name", label),
+            "mode": entry.get("mode", "custom"),
+            "category_id": entry.get("category_id"),
+            "temperature": entry["temperature"],
+            "humidity": entry["humidity"],
+            "gas": entry["gas"],
+        }
+
+    def _default_entry(self, label: str) -> dict[str, Any]:
+        return {
+            "name": label,
+            "mode": "custom",
+            "category_id": None,
+            **_default_canonical_bounds(),
+        }
+
     def _load_cells(self) -> None:
-        raw: dict[str, Any] = {}
-        if self._config_path.exists():
-            try:
-                with open(self._config_path, "r", encoding="utf-8") as f:
-                    payload = json.load(f)
-                if isinstance(payload, dict):
-                    raw = dict(payload.get("trigger_values", {}))
-            except (OSError, ValueError):
-                raw = {}
+        stored = self._storage.load_cell_configs()
+        seed = self._read_seed_trigger_values() if not stored else {}
 
         dirty = False
         cells: dict[int, dict[str, Any]] = {}
         for node_id, label in PROJECT_NODE_IDS.items():
-            entry = raw.get(str(node_id))
-            if isinstance(entry, dict) and all(metric in entry for metric in METRICS):
-                cells[node_id] = {
-                    "name": entry.get("name", label),
-                    "mode": entry.get("mode", "custom"),
-                    "category_id": entry.get("category_id"),
-                    "temperature": entry["temperature"],
-                    "humidity": entry["humidity"],
-                    "gas": entry["gas"],
-                }
+            if node_id in stored:
+                cells[node_id] = stored[node_id]
+                continue
+
+            seeded = self._entry_from_raw(node_id, label, seed.get(str(node_id)))
+            if seeded is not None:
+                cells[node_id] = seeded
             else:
-                cells[node_id] = {
-                    "name": label,
-                    "mode": "custom",
-                    "category_id": None,
-                    **_default_canonical_bounds(),
-                }
-                dirty = True
+                cells[node_id] = self._default_entry(label)
+            dirty = True
 
         self._cells = cells
-        if dirty:
-            self._save()
+        if dirty or not stored:
+            # Persist migrated/default rows into the existing DB.
+            self._storage.replace_cell_configs(self._cells)
 
     # -- persistence ---------------------------------------------------------------
 
-    def _save(self) -> None:
-        payload = {
-            "trigger_values": {
-                str(node_id): {
-                    "name": entry["name"],
-                    "mode": entry["mode"],
-                    "category_id": entry["category_id"],
-                    "temperature": entry["temperature"],
-                    "humidity": entry["humidity"],
-                    "gas": entry["gas"],
-                }
-                for node_id, entry in sorted(self._cells.items())
-            }
-        }
-        os.makedirs(self._config_path.parent, exist_ok=True)
-        temp_path = f"{self._config_path}.tmp"
-        with open(temp_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
-        os.replace(temp_path, self._config_path)
+    def _save_node(self, node_id: int) -> None:
+        self._storage.upsert_cell_config(node_id, self._cells[node_id])
 
     # -- reads -----------------------------------------------------------------
 
     def list_categories(self) -> dict[str, dict[str, Any]]:
+        self._ensure_loaded()
         return self._categories
 
     def get_metric_limits(self) -> dict[str, dict[str, float]]:
@@ -210,6 +224,7 @@ class CellConfigStore:
 
     def get_effective_bounds(self, node_id: int) -> Optional[dict[str, Any]]:
         with self._lock:
+            self._ensure_loaded()
             if node_id not in self._cells:
                 return None
             return self._effective_bounds_locked(node_id)
@@ -231,18 +246,21 @@ class CellConfigStore:
 
     def get_cell_config(self, node_id: int) -> Optional[dict[str, Any]]:
         with self._lock:
+            self._ensure_loaded()
             if node_id not in self._cells:
                 return None
             return self._cell_config_locked(node_id)
 
     def get_all_cell_configs(self) -> list[dict[str, Any]]:
         with self._lock:
+            self._ensure_loaded()
             return [self._cell_config_locked(node_id) for node_id in sorted(self._cells.keys())]
 
     # -- writes -----------------------------------------------------------------
 
     def set_category(self, node_id: int, category_id: str) -> dict[str, Any]:
         with self._lock:
+            self._ensure_loaded()
             if node_id not in self._cells:
                 raise CellConfigError(f"Unknown cell node_id {node_id}")
             category = self._categories.get(category_id)
@@ -254,11 +272,12 @@ class CellConfigStore:
             entry["category_id"] = category_id
             for metric in METRICS:
                 entry[metric] = category[metric]
-            self._save()
+            self._save_node(node_id)
             return self._cell_config_locked(node_id)
 
     def set_custom_bounds(self, node_id: int, simple_bounds: dict[str, dict[str, Any]]) -> dict[str, Any]:
         with self._lock:
+            self._ensure_loaded()
             if node_id not in self._cells:
                 raise CellConfigError(f"Unknown cell node_id {node_id}")
             missing = [metric for metric in METRICS if metric not in simple_bounds]
@@ -272,7 +291,7 @@ class CellConfigStore:
             entry["category_id"] = None
             for metric in METRICS:
                 entry[metric] = canonical[metric]
-            self._save()
+            self._save_node(node_id)
             return self._cell_config_locked(node_id)
 
     def project_node_ids(self) -> Iterable[int]:

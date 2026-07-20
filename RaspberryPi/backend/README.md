@@ -107,8 +107,9 @@ python -m RaspberryPi.backend.monitor_esp_ble
 Each cell's temperature/humidity/VOC readings are classified into green/yellow/red
 zones using either a predefined food category (`config/categories.json`, read-only)
 or manually-set custom bounds. Bounds and category assignments are persisted per
-cell in `config/config.json`, which the backend rewrites whenever a cell's
-configuration changes via the API (or the Live Tiles popup in the dashboard).
+cell in the SQLite `cell_config` table (same DB as minute averages). On first
+startup with an empty table, values are seeded once from `config/config.json`
+when present; after that, API / Live Tiles changes update the existing DB only.
 
 When a metric stays in a worse zone (green->yellow or yellow->red) continuously for
 more than `TRIGGER_SUSTAIN_SECONDS` (default 120s, see `config/constants.py`), an
