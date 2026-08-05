@@ -52,11 +52,11 @@ def print_status(
         f"Seen nodes: {len(nodes)} | "
         f"Stale threshold: {stale_seconds:.1f}s"
     )
-    print("-" * 108)
+    print("-" * 138)
     print(
-        "Node  State   Last(s)  Seq    Drops  Temp(C)  RH(%)  Prox   VOC   Flags  Address              Name"
+        "Node  State   Last(s)  Seq    Drops  Temp(C)  RH(%)  Prox   VOC  Score  Auto  Quality       Flags  Address              Name"
     )
-    print("-" * 108)
+    print("-" * 138)
 
     for node_id in sorted(nodes.keys()):
         state = nodes[node_id]
@@ -67,6 +67,15 @@ def print_status(
 
         pkt = state.packet
         status = "ONLINE" if is_online else "STALE "
+        quality = (
+            "FAULT"
+            if pkt.environment_fault
+            else "USABLE"
+            if pkt.measurement_usable
+            else "WAIT"
+            if pkt.protocol_version >= 5
+            else "LEGACY"
+        )
 
         print(
             f"{node_id:4d}  {status:6s}  "
@@ -77,13 +86,16 @@ def print_status(
             f"{format_optional(pkt.humidity_rh):>5s}  "
             f"{str(pkt.proximity) if pkt.proximity is not None else '--':>5s}  "
             f"{str(pkt.voc_index) if pkt.voc_index is not None else '--':>4s}  "
+            f"{str(pkt.voc_change_score) if pkt.voc_change_score is not None else '--':>5s}  "
+            f"{str(pkt.autonomous_state) if pkt.autonomous_state is not None else '--':>4s}  "
+            f"{quality:>11s}  "
             f"0x{pkt.flags:02X}   "
             f"{state.address:18.18s}  "
             f"{state.name}"
         )
 
     missing = max(expected_nodes - len(nodes), 0)
-    print("-" * 108)
+    print("-" * 138)
     print(
         f"ONLINE={online}  STALE={stale}  MISSING={missing}  "
         f"TOTAL_RX={sum(state.received_count for state in nodes.values())}"

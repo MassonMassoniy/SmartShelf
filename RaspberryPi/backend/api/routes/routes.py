@@ -123,6 +123,46 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
             }
         )
 
+    @app.get("/api/product-profiles")
+    def product_profiles_api() -> Response:
+        return jsonify({"profiles": service.cell_config.list_profiles()})
+
+    @app.post("/api/product-profiles")
+    def create_product_profile() -> tuple[Response, int] | Response:
+        try:
+            profile = service.cell_config.create_profile(request.get_json(silent=True) or {})
+        except CellConfigError as exc:
+            return jsonify({"detail": str(exc)}), 422
+        return jsonify(profile), 201
+
+    @app.get("/api/product-profiles/<profile_id>")
+    def get_product_profile(profile_id: str) -> tuple[Response, int] | Response:
+        profile = service.cell_config.get_profile(profile_id)
+        if profile is None:
+            return jsonify({"detail": f"Unknown profile_id {profile_id!r}"}), 404
+        return jsonify(profile)
+
+    @app.put("/api/product-profiles/<profile_id>")
+    def update_product_profile(profile_id: str) -> tuple[Response, int] | Response:
+        try:
+            profile = service.cell_config.update_profile(
+                profile_id, request.get_json(silent=True) or {}
+            )
+        except CellConfigError as exc:
+            status = 404 if str(exc).startswith("Unknown profile_id") else 422
+            return jsonify({"detail": str(exc)}), status
+        return jsonify(profile)
+
+    @app.delete("/api/product-profiles/<profile_id>")
+    def delete_product_profile(profile_id: str) -> tuple[Response, int] | Response:
+        try:
+            service.cell_config.delete_profile(profile_id)
+        except CellConfigError as exc:
+            message = str(exc)
+            status = 404 if message.startswith("Unknown profile_id") else 409
+            return jsonify({"detail": message}), status
+        return jsonify({"deleted": True, "profile_id": profile_id})
+
     @app.get("/api/cells/config")
     def cells_config_api() -> Response:
         return jsonify({"cells": service.cell_config.get_all_cell_configs()})
@@ -130,20 +170,43 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
     @app.put("/api/cells/<int:node_id>/config")
     def update_cell_config(node_id: int) -> tuple[Response, int] | Response:
         body = request.get_json(silent=True) or {}
-        mode = body.get("mode")
+        mode = body.get("assignment_mode") or body.get("mode")
         try:
-            if mode == "category":
+            if mode in {"linked", "copied", "override"}:
+                profile_id = body.get("profile_id")
+                if not profile_id:
+                    return jsonify({"detail": "profile_id is required for profile assignment"}), 422
+                updated = service.cell_config.set_assignment(
+                    node_id,
+                    mode,
+                    profile_id=str(profile_id),
+                    voc_policy_override=body.get("voc_policy_override"),
+                )
+            elif mode == "category":
                 category_id = body.get("category_id")
                 if not category_id:
                     return jsonify({"detail": "category_id is required when mode is 'category'"}), 422
-                updated = service.cell_config.set_category(node_id, str(category_id))
+                updated = service.cell_config.set_category(
+                    node_id, str(category_id), body.get("voc_policy")
+                )
             elif mode == "custom":
                 custom_bounds = body.get("custom_bounds")
                 if not isinstance(custom_bounds, dict):
                     return jsonify({"detail": "custom_bounds object is required when mode is 'custom'"}), 422
-                updated = service.cell_config.set_custom_bounds(node_id, custom_bounds)
+                updated = service.cell_config.set_custom_bounds(
+                    node_id, custom_bounds, body.get("voc_policy")
+                )
+            elif mode is None and isinstance(body.get("voc_policy"), dict):
+                updated = service.cell_config.set_voc_policy(node_id, body["voc_policy"])
             else:
-                return jsonify({"detail": "mode must be 'category' or 'custom'"}), 422
+                return jsonify(
+                    {
+                        "detail": (
+                            "assignment_mode must be linked, copied, override, or custom; "
+                            "legacy category/custom and voc_policy-only requests remain supported"
+                        )
+                    }
+                ), 422
         except CellConfigError as exc:
             return jsonify({"detail": str(exc)}), 422
 
@@ -194,6 +257,10 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
     @app.get("/nodes/status")
     def nodes_status() -> Response:
         return jsonify(service.get_node_status())
+
+    @app.get("/api/voc-alerts")
+    def voc_alerts() -> Response:
+        return jsonify({"alerts": service.storage.get_voc_alert_states()})
 
     @app.get("/nodes/stream")
     def nodes_stream() -> Response:
@@ -269,12 +336,42 @@ def _zone_fields(node_id: int, service: BackendService, metric_values: dict[str,
 def _map_node_reading(node: dict[str, Any], service: BackendService) -> dict[str, Any]:
     node_id = node.get("node_id")
     reading = {
+        "protocol_version": node.get("protocol_version"),
         "gas": node.get("voc_index"),
         "temperature": node.get("temperature_c"),
         "humidity": node.get("humidity_rh"),
         "proximity": node.get("proximity"),
         "cell_empty": node.get("cell_empty"),
         "cell_status": node.get("cell_status"),
+        "voc_change_score": node.get("voc_change_score"),
+        "autonomous_state": node.get("autonomous_state"),
+        "baseline_valid": node.get("baseline_valid"),
+        "environment_fault": node.get("environment_fault"),
+        "voc_6sigma": node.get("voc_6sigma"),
+        "voc_10sigma": node.get("voc_10sigma"),
+        "measurement_usable": node.get("measurement_usable"),
+        "phase_remaining_sec": node.get("phase_remaining_sec"),
+        "concurrent_state": node.get("concurrent_state"),
+        "concurrent_remaining_sec": node.get("concurrent_remaining_sec"),
+        "voc_decision_state": node.get("voc_decision_state"),
+        "voc_warning_elapsed_seconds": node.get("voc_warning_elapsed_seconds"),
+        "voc_alert_elapsed_seconds": node.get("voc_alert_elapsed_seconds"),
+        "voc_alert_latched": node.get("voc_alert_latched"),
+        "evaluation_state": node.get("evaluation_state"),
+        "active_timer": node.get("active_timer"),
+        "elapsed_seconds": node.get("elapsed_seconds"),
+        "required_seconds": node.get("required_seconds"),
+        "progress": node.get("progress"),
+        "requirement": node.get("requirement"),
+        "effective_voc_policy": node.get("effective_voc_policy"),
+        "assignment_mode": node.get("assignment_mode"),
+        "profile_id": node.get("profile_id"),
+        "profile_name": node.get("profile_name"),
+        "profile_source": node.get("profile_source"),
+        "voc_policy_override": node.get("voc_policy_override"),
+        "warning_active": node.get("warning_active"),
+        "voc_latch_severity": node.get("voc_latch_severity"),
+        "voc_critical_latched": node.get("voc_critical_latched"),
         "ts": int(node.get("received_at") or time.time()),
         "node_id": node_id,
         "address": node.get("address"),
@@ -286,13 +383,45 @@ def _map_node_reading(node: dict[str, Any], service: BackendService) -> dict[str
 
 
 def _empty_reading(node_id: int, service: BackendService) -> dict[str, Any]:
+    cell_config = service.cell_config.get_cell_config(node_id) or {}
     reading = {
+        "protocol_version": None,
         "gas": None,
         "temperature": None,
         "humidity": None,
         "proximity": None,
         "cell_empty": None,
         "cell_status": None,
+        "voc_change_score": None,
+        "autonomous_state": None,
+        "baseline_valid": False,
+        "environment_fault": False,
+        "measurement_usable": False,
+        "phase_remaining_sec": None,
+        "concurrent_state": None,
+        "concurrent_remaining_sec": None,
+        "voc_decision_state": "monitoring",
+        "voc_warning_elapsed_seconds": 0.0,
+        "voc_alert_elapsed_seconds": 0.0,
+        "voc_alert_latched": False,
+        "evaluation_state": "monitoring",
+        "active_timer": None,
+        "elapsed_seconds": 0.0,
+        "required_seconds": 0,
+        "progress": 0.0,
+        "requirement": None,
+        "effective_voc_policy": (
+            cell_config.get("effective_voc_policy")
+            or service.cell_config.get_effective_voc_policy(node_id)
+        ),
+        "assignment_mode": cell_config.get("assignment_mode"),
+        "profile_id": cell_config.get("profile_id"),
+        "profile_name": cell_config.get("profile_name"),
+        "profile_source": cell_config.get("profile_source"),
+        "voc_policy_override": cell_config.get("voc_policy_override"),
+        "warning_active": False,
+        "voc_latch_severity": "none",
+        "voc_critical_latched": False,
         "ts": None,
         "node_id": node_id,
         "address": None,
@@ -327,7 +456,11 @@ def _build_sensor(node_id: int, service: BackendService) -> dict[str, Any]:
         "node_id": node_id,
         "is_expected": is_expected,
         "mode": cell_config["mode"] if cell_config else None,
-        "assignment_label": (cell_config["category_name"] if cell_config else None) or "Custom",
+        "assignment_label": (
+            (cell_config.get("profile_name") if cell_config else None)
+            or (cell_config.get("category_name") if cell_config else None)
+            or "Custom"
+        ),
     }
 
 

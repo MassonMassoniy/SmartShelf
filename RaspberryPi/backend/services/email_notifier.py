@@ -274,3 +274,61 @@ class EmailNotifier:
             sustain_minutes=sustain_minutes,
         )
         return await asyncio.to_thread(self._send_sync, message)
+
+    async def send_voc_alert(
+        self,
+        *,
+        cell_label: str,
+        assignment: str,
+        severity: str,
+        score: int,
+        sigma: int,
+        sustain_minutes: float,
+    ) -> bool:
+        """Send an autonomous VOC warning, alert, or critical notification."""
+        if not self.is_configured:
+            if not self._warned_unconfigured:
+                logger.warning(
+                    "Email SMTP/recipients not configured; skipping alert. "
+                    "Fill in %s (or EMAIL_* env vars) to enable notifications.",
+                    self._config_path,
+                )
+                self._warned_unconfigured = True
+            return False
+
+        level = severity.upper()
+        latch_text = (
+            "This severity is latched and clears only after the ESP confirms the cell is EMPTY."
+            if severity in {"alert", "critical"}
+            else (
+                "This warning remains active until the score stays at or below "
+                "the configured warning-clear threshold for its full clear duration."
+            )
+        )
+        plain = (
+            f"SmartShelf Autonomous VOC {level}\n"
+            f"{'=' * 40}\n\n"
+            f"Cell: {cell_label}\n"
+            f"Product / policy: {assignment}\n"
+            f"VOC change score: {score}\n"
+            f"Evidence: {sigma}-sigma threshold\n"
+            f"Sustained: {sustain_minutes:g}+ minutes\n\n"
+            f"{latch_text}\n"
+        )
+        html = (
+            "<html><body style=\"font-family:Segoe UI,Arial,sans-serif\">"
+            f"<h2>SmartShelf Autonomous VOC {escape(level)}</h2>"
+            f"<p><strong>Cell:</strong> {escape(cell_label)}<br>"
+            f"<strong>Product / policy:</strong> {escape(assignment)}<br>"
+            f"<strong>VOC change score:</strong> {score}<br>"
+            f"<strong>Evidence:</strong> {sigma}-sigma threshold sustained "
+            f"{sustain_minutes:g}+ minutes</p><p>{escape(latch_text)}</p></body></html>"
+        )
+        cfg = self._config
+        message = EmailMessage()
+        message["Subject"] = f"SmartShelf VOC {level}: Cell {cell_label} — score {score}"
+        message["From"] = formataddr((cfg["from_name"], cfg["from_address"]))
+        message["To"] = ", ".join(cfg["recipients"])
+        message.set_content(plain)
+        message.add_alternative(html, subtype="html")
+        return await asyncio.to_thread(self._send_sync, message)

@@ -10,10 +10,15 @@
 {% else %}
   {% set cell_status = 'full' %}
 {% endif %}
+{% set is_v5 = (not reading) or (reading.protocol_version is not defined) or (reading.protocol_version is none) or (reading.protocol_version|int >= 5) or (reading.voc_change_score is not none) or (reading.autonomous_state is not none) %}
+{% if reading and reading.protocol_version is defined and reading.protocol_version is not none and reading.protocol_version|int < 5 and reading.voc_change_score is none and reading.autonomous_state is none %}
+  {% set is_v5 = false %}
+{% endif %}
 <article
   id="tile-{{sensor.id}}"
   data-sensor-id="{{sensor.id}}"
   data-node-id="{{sensor.node_id}}"
+  data-protocol-version="{% if reading and reading.protocol_version is defined and reading.protocol_version is not none %}{{ reading.protocol_version }}{% elif is_v5 %}5{% endif %}"
   data-last-seen="{{reading.ts if has_data else ''}}"
   data-cell-status="{{ cell_status if has_data else 'unknown' }}"
   data-tile-state="{% if has_data %}live{% else %}offline{% endif %}"
@@ -24,7 +29,7 @@
     class="cell-config-btn"
     data-sensor-id="{{sensor.id}}"
     data-node-id="{{sensor.node_id}}"
-    aria-label="Configure {{sensor.name}} trigger bounds"
+    aria-label="Configure {{sensor.name}} product profile and trigger policy"
   >
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M19.14 12.94a7.14 7.14 0 0 0 .06-.94 7.14 7.14 0 0 0-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.14 7.14 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.4.32.6.22l2.39-.96c.49.38 1.03.7 1.62.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.24.1.5 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" />
@@ -35,7 +40,9 @@
     <div class="tile-identity">
       <h2 class="tile-name">{{sensor.name}}</h2>
       <p class="tile-meta">Node {{sensor.node_id}}</p>
-      <p data-field="assignment" class="tile-assignment">{{ sensor.assignment_label or "Custom" }}</p>
+      <p data-field="assignment" class="tile-assignment">
+        {% if is_v5 and reading.profile_name %}{{ reading.profile_name }} · {{ reading.assignment_mode or reading.profile_source or "linked" }}{% else %}{{ sensor.assignment_label or "Custom" }}{% endif %}
+      </p>
     </div>
     <span
       data-field="status"
@@ -56,7 +63,7 @@
 
     <div class="metric-row">
       <div class="metric-label-row">
-        <span class="metric-label">Temp</span>
+        <span class="metric-label" data-short-label="Temp">Temperature</span>
         <span class="metric-value"><span data-field="temperature">{% if has_data and reading.temperature is not none %}{{ reading.temperature }}{% else %}--{% endif %}</span> °C</span>
       </div>
       <div class="metric-track">
@@ -73,7 +80,7 @@
     {% if h_pct > 100 %}{% set h_pct = 100 %}{% endif %}
     <div class="metric-row">
       <div class="metric-label-row">
-        <span class="metric-label">Humidity</span>
+        <span class="metric-label" data-short-label="RH">Relative humidity</span>
         <span class="metric-value"><span data-field="humidity">{% if has_data and reading.humidity is not none %}{{ reading.humidity }}{% else %}--{% endif %}</span> %</span>
       </div>
       <div class="metric-track">
@@ -81,7 +88,10 @@
       </div>
     </div>
 
-    {% if has_data and reading.gas is not none %}
+    {% set score_unavailable = not has_data or not is_v5 or reading.voc_change_score is none or reading.environment_fault or not reading.measurement_usable %}
+    {% if is_v5 and not score_unavailable %}
+      {% set g_pct = reading.voc_change_score %}
+    {% elif not is_v5 and has_data and reading.gas is not none %}
       {% set g_pct = ((reading.gas - 0) / (1000 - 0) * 100) %}
     {% else %}
       {% set g_pct = 0 %}
@@ -90,17 +100,59 @@
     {% if g_pct > 100 %}{% set g_pct = 100 %}{% endif %}
     <div class="metric-row">
       <div class="metric-label-row">
-        <span class="metric-label">VOC</span>
-        <span class="metric-value"><span data-field="gas">{% if has_data and reading.gas is not none %}{{ reading.gas }}{% else %}--{% endif %}</span></span>
+        <span class="metric-label" data-field="voc-label" data-short-label="VOC">{% if is_v5 %}VOC change score{% else %}VOC index{% endif %}</span>
+        <span class="metric-value"><span data-field="gas">{% if is_v5 %}{% if not score_unavailable %}{{ reading.voc_change_score }}{% else %}--{% endif %}{% elif has_data and reading.gas is not none %}{{ reading.gas }}{% else %}--{% endif %}</span><span data-field="voc-score-unit">{% if is_v5 %} / 100{% endif %}</span></span>
       </div>
-      <div class="metric-track">
-        <div data-bar="gas" data-initial-width="{{ g_pct|float|round(1) }}" class="{% if has_data and reading.gas_bar_class %}{{ reading.gas_bar_class }}{% else %}bar-neutral{% endif %} metric-bar"></div>
+      <div class="metric-track voc-track">
+        <div data-bar="gas" data-initial-width="{{ g_pct|float|round(1) }}" class="{% if is_v5 and not score_unavailable and (reading.voc_alert_latched or reading.voc_decision_state == 'alert') %}bar-bad{% elif is_v5 and not score_unavailable and reading.voc_decision_state == 'warning' %}bar-warn{% elif is_v5 and not score_unavailable %}bar-ok{% elif not is_v5 and has_data and reading.gas_bar_class %}{{ reading.gas_bar_class }}{% else %}bar-neutral{% endif %} metric-bar"></div>
+        <span data-marker="warning" class="voc-marker voc-marker--warning{% if not is_v5 or not reading.effective_voc_policy or reading.effective_voc_policy.warning_score is none %} hidden{% endif %}"{% if is_v5 and reading.effective_voc_policy and reading.effective_voc_policy.warning_score is not none %} style="left:{{ reading.effective_voc_policy.warning_score }}%"{% endif %} aria-hidden="true"></span>
+        <span data-marker="alert" class="voc-marker voc-marker--alert{% if not is_v5 or not reading.effective_voc_policy or reading.effective_voc_policy.alert_score is none %} hidden{% endif %}"{% if is_v5 and reading.effective_voc_policy and reading.effective_voc_policy.alert_score is not none %} style="left:{{ reading.effective_voc_policy.alert_score }}%"{% endif %} aria-hidden="true"></span>
+        <span data-marker="critical" class="voc-marker voc-marker--critical{% if not is_v5 or not reading.effective_voc_policy or reading.effective_voc_policy.critical_score is none %} hidden{% endif %}"{% if is_v5 and reading.effective_voc_policy and reading.effective_voc_policy.critical_score is not none %} style="left:{{ reading.effective_voc_policy.critical_score }}%"{% endif %} aria-hidden="true"></span>
+      </div>
+      <div class="voc-status" {% if is_v5 %}role="status"{% endif %}>
+        {% if is_v5 %}
+          {% set _state = reading.autonomous_state if reading else none %}
+          {% set _rem = reading.phase_remaining_sec if reading else none %}
+          {% set _concurrent = reading.concurrent_state if reading else none %}
+          {% set _crem = reading.concurrent_remaining_sec if reading else none %}
+          {% if _state == 1 and _concurrent == 3 %}
+            {% set _phase = "Warming up · settling" %}
+            {% set _combined = [_rem or 0, _crem or 0]|max %}
+            {% set _detail = ("%d:%02d left"|format((_combined // 60), (_combined % 60))) if _combined else "Finishing…" %}
+          {% else %}
+            {% set _phase = {0:"Warming up",1:"Warming up",2:"Shelf empty",3:"Product settling",4:"Learning baseline",5:"Tracking product",8:"Humidity fault"}.get(_state, "Sensor unavailable") %}
+            {% if _state in [0, 1, 3, 4] and _rem %}
+              {% set _detail = "%d:%02d left"|format((_rem // 60), (_rem % 60)) %}
+            {% elif reading.environment_fault or _state == 8 %}
+              {% set _detail = "Score paused" %}
+            {% elif not reading.baseline_valid %}
+              {% set _detail = "Waiting for baseline" %}
+            {% elif not reading.measurement_usable %}
+              {% set _detail = "Score not ready" %}
+            {% else %}
+              {% set _detail = "Score live" %}
+            {% endif %}
+          {% endif %}
+        {% else %}
+          {% set _phase = "Legacy VOC Index" %}
+          {% set _detail = "" %}
+        {% endif %}
+        <span data-field="voc-phase" class="voc-status-phase">{{ _phase }}</span>
+        <span data-field="voc-detail" class="voc-status-detail">{{ _detail }}</span>
       </div>
     </div>
   </div>
 
-  <footer class="tile-foot">
-    <span>Updated</span>
-    <span data-field="updated">{{reading.ts if has_data else "No data"}}</span>
-  </footer>
+  <div class="tile-status">
+    {% set _eval = reading.evaluation_state or reading.voc_decision_state or "" %}
+    {% set _show_timer = is_v5 and (_eval and _eval != "monitoring") %}
+    <div class="evaluation-progress{% if not _show_timer %} hidden{% endif %}{% if 'critical' in (_eval|string) %} is-critical{% elif 'alert' in (_eval|string) %} is-alert{% elif 'warning' in (_eval|string) %} is-warning{% endif %}" data-field="evaluation-progress" role="progressbar" aria-label="VOC alert timer" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ ((reading.progress or 0) * 100)|round|int if _show_timer else 0 }}">
+      <span data-field="evaluation-progress-bar" style="width:{{ ((reading.progress or 0) * 100)|round(1) if _show_timer else 0 }}%"></span>
+      <b data-field="evaluation-progress-text">{% if _show_timer and reading.active_timer %}{{ {"warning_pending":"Warning timer","warning":"Warning","warning_clear_pending":"Clearing warning","alert_pending":"Alert timer","alert":"Alert","critical_pending":"Critical timer","critical":"Critical"}.get(_eval, _eval|replace("_"," ")) }} · {{ ((reading.elapsed_seconds or 0) / 60)|round(1) }}/{{ ((reading.required_seconds or 0) / 60)|round(1) }} min{% elif _show_timer %}{{ {"warning":"Warning active","alert":"Alert active","critical":"Critical active"}.get(_eval, _eval|replace("_"," ")) }}{% endif %}</b>
+    </div>
+    <footer class="tile-foot">
+      <span>Updated</span>
+      <span data-field="updated">{{reading.ts if has_data else "No data"}}</span>
+    </footer>
+  </div>
 </article>

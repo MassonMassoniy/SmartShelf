@@ -49,6 +49,7 @@
     }
 
     * { box-sizing: border-box; }
+    .hidden { display: none !important; }
 
     html, body {
       height: 100%;
@@ -240,12 +241,12 @@
       position: relative;
       display: flex;
       flex-direction: column;
-      gap: 0.6rem;
+      gap: 0.45rem;
       min-height: 14rem;
       height: auto;
       min-width: 0;
-      overflow: visible;
-      padding: 0.75rem 0.85rem 0.85rem;
+      overflow: hidden;
+      padding: 0.7rem 0.8rem 0.7rem;
       background: var(--surface);
       border: 1px solid var(--line);
       border-radius: var(--radius);
@@ -361,13 +362,19 @@
     .tile-metrics {
       display: flex;
       flex-direction: column;
-      gap: 0.45rem;
-      flex: 0 0 auto;
-      min-height: min-content;
+      gap: 0.28rem;
+      flex: 1 1 auto;
+      min-height: 0;
+      justify-content: flex-start;
     }
 
     .metric-row {
-      flex-shrink: 0;
+      flex: 0 0 auto;
+    }
+
+    .metric-row:has(.voc-track) {
+      padding-top: 0.45rem;
+      margin-top: 0.05rem;
     }
 
     .metric-label-row {
@@ -375,7 +382,7 @@
       justify-content: space-between;
       align-items: baseline;
       gap: 0.5rem;
-      margin-bottom: 0.2rem;
+      margin-bottom: 0.12rem;
       font-size: var(--text-xs);
     }
 
@@ -392,6 +399,7 @@
     }
 
     .metric-track {
+      position: relative;
       height: 0.55rem;
       overflow: hidden;
       border-radius: 999px;
@@ -402,6 +410,125 @@
       height: 100%;
       border-radius: 999px;
       transition: none;
+    }
+
+    .voc-status {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.45rem;
+      margin-top: 0.28rem;
+      font-size: 0.68rem;
+      line-height: 1.2;
+      min-width: 0;
+    }
+
+    .voc-status-phase {
+      font-weight: 700;
+      color: var(--ink-muted);
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .voc-status-detail {
+      flex-shrink: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: right;
+      font-weight: 600;
+      color: var(--ink-faint);
+    }
+
+    .voc-track {
+      overflow: visible;
+    }
+
+    .voc-marker {
+      position: absolute;
+      z-index: 2;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      transform: translateX(-1px);
+      background: var(--ink);
+      pointer-events: none;
+    }
+
+    .voc-marker::after {
+      position: absolute;
+      bottom: calc(100% + 0.08rem);
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 0 0.1rem;
+      border-radius: 0.15rem;
+      background: var(--surface);
+      font-size: 0.48rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .voc-marker--warning { background: var(--warn-ink); }
+    .voc-marker--warning::after { content: "W"; color: var(--warn-ink); }
+    .voc-marker--alert,
+    .voc-marker--critical { background: var(--bad-ink); }
+    .voc-marker--alert::after { content: "A"; color: var(--bad-ink); }
+    .voc-marker--critical::after { content: "C"; color: var(--bad-ink); }
+
+    .tile-status {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      flex-shrink: 0;
+      margin-top: auto;
+      padding-top: 0.45rem;
+      border-top: 1px solid color-mix(in oklch, var(--line) 75%, transparent);
+    }
+
+    .tile-status:has(.evaluation-progress.hidden) {
+      gap: 0;
+    }
+
+    .evaluation-progress {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 1rem;
+      min-height: 1rem;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 0.3rem;
+      background: var(--surface-muted);
+      color: var(--ink-muted);
+      font-size: 0.58rem;
+      line-height: 1;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .evaluation-progress.hidden {
+      display: none;
+    }
+
+    .evaluation-progress > span {
+      position: absolute;
+      inset: 0 auto 0 0;
+      background: var(--accent-soft);
+    }
+
+    .evaluation-progress.is-warning > span { background: var(--warn-soft); }
+    .evaluation-progress.is-alert > span,
+    .evaluation-progress.is-critical > span { background: var(--bad-soft); }
+
+    .evaluation-progress > b {
+      position: relative;
+      z-index: 1;
+      font-weight: 700;
+      letter-spacing: 0.01em;
     }
 
     /* Zone fill: vivid green / yellow / red (matches config.json bands) */
@@ -418,9 +545,10 @@
       flex-shrink: 0;
       min-width: 0;
       width: 100%;
-      margin-top: 0.2rem;
-      line-height: 1.35;
-      font-size: 0.72rem;
+      margin: 0;
+      padding: 0;
+      line-height: 1.2;
+      font-size: 0.68rem;
       font-weight: 500;
       color: var(--ink-faint);
       font-variant-numeric: tabular-nums;
@@ -483,10 +611,16 @@
         height: 0.55rem;
       }
 
+      .tile-status {
+        margin-top: auto;
+        gap: 0.45rem;
+        padding-top: 0.5rem;
+      }
+
       .tile-foot {
         flex-shrink: 0;
-        margin-top: auto;
-        padding-top: 0.25rem;
+        margin-top: 0;
+        padding-top: 0;
         font-size: 0.75rem;
         line-height: 1.4;
         gap: 0.5rem;
@@ -716,7 +850,8 @@
     }
 
     #modal-category-view,
-    #modal-custom-view {
+    #modal-custom-view,
+    #modal-profiles-view {
       min-height: 100%;
     }
 
@@ -759,7 +894,94 @@
     #modal-category-info.hidden,
     #modal-custom-view.hidden,
     #modal-category-view.hidden,
+    #modal-profiles-view.hidden,
     #modal-error.hidden { display: none !important; }
+
+    .assignment-options,
+    .profile-toolbar {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.55rem;
+      margin-top: 0.7rem;
+    }
+
+    .assignment-option {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      min-height: var(--touch);
+      padding: 0.55rem 0.7rem;
+      border: 1.5px solid var(--line);
+      border-radius: 0.45rem;
+      background: var(--surface);
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .assignment-option:has(input:checked) {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+    }
+
+    .assignment-option input,
+    .toggle-row input {
+      width: 1.25rem;
+      height: 1.25rem;
+      accent-color: var(--accent);
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      min-height: var(--touch);
+      margin-top: 0.65rem;
+      padding: 0.55rem 0.7rem;
+      border-radius: 0.45rem;
+      background: var(--surface-muted);
+      font-weight: 700;
+    }
+
+    .profile-manager {
+      display: grid;
+      grid-template-columns: minmax(12rem, 0.8fr) minmax(0, 1.6fr);
+      gap: 0.75rem;
+    }
+
+    .profile-list {
+      display: grid;
+      gap: 0.45rem;
+      align-content: start;
+    }
+
+    .profile-editor {
+      min-width: 0;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      background: var(--surface-muted);
+    }
+
+    .profile-name-input {
+      width: 100%;
+      min-height: var(--touch);
+      margin-bottom: 0.65rem;
+      padding: 0.55rem 0.7rem;
+      border: 1.5px solid var(--line);
+      border-radius: 0.45rem;
+      background: var(--surface);
+      color: var(--ink);
+      font: inherit;
+      font-weight: 700;
+    }
+
+    .btn-danger { background: var(--bad-soft); color: var(--bad-ink); }
+
+    @media (max-width: 639px) {
+      .profile-manager { grid-template-columns: 1fr; }
+      .assignment-options, .profile-toolbar { grid-template-columns: 1fr; }
+    }
 
     .custom-metric-block {
       margin-bottom: 0.7rem;
@@ -769,6 +991,36 @@
     }
 
     .custom-metric-block:last-child { margin-bottom: 0; }
+
+    .policy-note {
+      margin: 0.6rem 0 0;
+      padding: 0.65rem 0.75rem;
+      border-left: 0.22rem solid var(--accent);
+      border-radius: 0.35rem;
+      background: var(--accent-soft);
+      color: var(--ink-muted);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    .policy-gates {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.55rem;
+      margin-top: 0.65rem;
+    }
+
+    .policy-gate {
+      padding: 0.55rem;
+      border: 1px solid var(--line);
+      border-radius: 0.4rem;
+      background: var(--surface);
+      text-align: center;
+      color: var(--ink-muted);
+      font-size: var(--text-xs);
+      font-weight: 600;
+    }
 
     .custom-metric-title {
       margin: 0 0 0.6rem;
@@ -972,12 +1224,26 @@
       .sensor-tile {
         min-height: 16rem;
         height: auto;
-        padding: 0.9rem 1rem 0.8rem;
-        gap: 0.7rem;
+        padding: 0.75rem 0.85rem 0.65rem;
+        gap: 0.4rem;
       }
 
-      .metric-track { height: 0.6rem; }
-      .tile-metrics { gap: 0.5rem; }
+      .metric-track { height: 0.5rem; }
+      .tile-metrics { gap: 0.28rem; }
+      .metric-row:has(.voc-track) { padding-top: 0.45rem; }
+      .voc-status {
+        margin-top: 0.22rem;
+        font-size: 0.62rem;
+      }
+      .tile-status {
+        gap: 0.38rem;
+        padding-top: 0.42rem;
+      }
+      .evaluation-progress {
+        height: 1rem;
+        min-height: 1rem;
+        font-size: 0.56rem;
+      }
 
       .chart-panel {
         flex: 1 1 auto;
@@ -1013,15 +1279,18 @@
       .sensor-tile {
         min-height: 17rem;
         height: 100%;
-        padding: 1.05rem 1.1rem 0.95rem;
+        padding: 0.85rem 0.95rem 0.7rem;
+        gap: 0.4rem;
       }
 
       .tile-metrics {
         flex: 1 1 auto;
-        justify-content: space-evenly;
+        justify-content: flex-start;
+        gap: 0.34rem;
       }
 
-      .metric-track { height: 0.65rem; }
+      .metric-track { height: 0.55rem; }
+      .metric-row:has(.voc-track) { padding-top: 0.5rem; }
     }
 
     /*
@@ -1150,9 +1419,39 @@
         line-height: 1.1;
       }
 
+      .metric-label[data-short-label] {
+        font-size: 0;
+      }
+
+      .metric-label[data-short-label]::after {
+        content: attr(data-short-label);
+        font-size: 0.68rem;
+      }
+
       .metric-value { font-size: 0.72rem; }
 
       .metric-track { height: 0.32rem; }
+
+      .metric-row:has(.voc-track) { padding-top: 0.12rem; }
+
+      .voc-status {
+        margin-top: 0.05rem;
+        font-size: 0.55rem;
+        line-height: 1.1;
+      }
+
+      .tile-status {
+        gap: 0.22rem;
+        padding-top: 0.22rem;
+      }
+
+      .evaluation-progress {
+        height: 0.7rem;
+        min-height: 0.7rem;
+        font-size: 0.48rem;
+      }
+
+      .voc-marker::after { display: none; }
 
       .tile-foot {
         flex-shrink: 0;
@@ -1264,7 +1563,7 @@
     <div class="modal-sheet">
       <div class="modal-header">
         <div>
-          <div class="modal-kicker">Trigger bounds</div>
+          <div class="modal-kicker">Cell monitoring config</div>
           <div id="modal-cell-title">--</div>
         </div>
         <button type="button" id="modal-close-btn" class="icon-btn" aria-label="Close">
@@ -1275,8 +1574,9 @@
       </div>
 
       <div class="modal-modes">
-        <button type="button" class="modal-mode-btn" data-mode="category">Category</button>
+        <button type="button" class="modal-mode-btn" data-mode="category">Assignment</button>
         <button type="button" class="modal-mode-btn" data-mode="custom">Custom</button>
+        <button type="button" class="modal-mode-btn" data-mode="profiles">Profiles</button>
       </div>
 
       <div class="modal-body">
@@ -1285,6 +1585,8 @@
           <div id="modal-category-info" class="hidden"></div>
         </div>
         <div id="modal-custom-view" class="hidden"></div>
+        <div id="modal-profiles-view" class="hidden"></div>
+        <p class="policy-note">VOC rules indicate operational relative change only. They are not proof that food is safe or spoiled.</p>
       </div>
 
       <div class="modal-footer">
@@ -1308,6 +1610,7 @@
     const categories = {{ categories | tojson }};
     const metricLimits = {{ metric_limits | tojson }};
     const cellConfigs = {{ cell_configs | tojson }};
+    let productProfiles = [];
     const backendClock = document.getElementById("backend-clock");
     const streamStatus = document.getElementById("stream-status");
     let historyChart = null;
@@ -1321,6 +1624,7 @@
     const metrics = [
       { field: "temperature_c", tileField: "temperature", label: "Temperature", unit: "°C", color: "#e11d48" },
       { field: "humidity_rh", tileField: "humidity", label: "Humidity", unit: "%", color: "#0891b2" },
+      { field: "voc_change_score", tileField: "vocScore", label: "VOC Change Score", unit: "0–100", color: "#0f766e" },
       { field: "voc_index", tileField: "gas", label: "VOC Index", unit: "", color: "#16a34a" },
     ];
     const emaBaseAlpha = 0.1;
@@ -1405,8 +1709,14 @@
 
     function clearTileReading(tile, updatedTs = null) {
       setTextIfChanged(tile.querySelector('[data-field="gas"]'), "--");
+      setTextIfChanged(tile.querySelector('[data-field="voc-index"]'), "--");
       setTextIfChanged(tile.querySelector('[data-field="temperature"]'), "--");
       setTextIfChanged(tile.querySelector('[data-field="humidity"]'), "--");
+      if (Number(tile.dataset.protocolVersion) >= 5) {
+        setTextIfChanged(tile.querySelector('[data-field="voc-phase"]'), "Sensor unavailable");
+        setTextIfChanged(tile.querySelector('[data-field="voc-detail"]'), "Score unavailable");
+        updateEvaluationProgress(tile, null);
+      }
       setTextIfChanged(tile.querySelector('[data-field="updated"]'), updatedTs ? formatTime(updatedTs) : "--:--:--");
       setBarState(tile.querySelector('[data-bar="gas"]'), "gas", null);
       setBarState(tile.querySelector('[data-bar="temperature"]'), "temperature", null);
@@ -1424,6 +1734,214 @@
       }
       if (node.proximity == null) return "unknown";
       return node.cell_empty ? "empty" : "full";
+    }
+
+    const sensorPhaseLabels = {
+      0: "Warming up",
+      1: "Warming up",
+      2: "Shelf empty",
+      3: "Product settling",
+      4: "Learning baseline",
+      5: "Tracking product",
+      8: "Humidity fault",
+    };
+
+    const evaluationLabels = {
+      monitoring: "Quiet",
+      warning_pending: "Warning timer",
+      warning: "Warning active",
+      warning_clear_pending: "Clearing warning",
+      alert_pending: "Alert timer",
+      alert: "Alert active",
+      critical_pending: "Critical timer",
+      critical: "Critical active",
+    };
+
+    function formatCountdown(seconds) {
+      const total = Math.max(0, Math.round(Number(seconds) || 0));
+      const minutes = Math.floor(total / 60);
+      const secs = total % 60;
+      return `${minutes}:${String(secs).padStart(2, "0")}`;
+    }
+
+    function describeScoreDetail(node, environmentFault, measurementUsable) {
+      if (environmentFault) return "Score paused";
+      if (!node.baseline_valid) return "Waiting for baseline";
+      if (!measurementUsable) return "Score not ready";
+      return "Score live";
+    }
+
+    function describePhaseStatus(node, environmentFault, measurementUsable) {
+      const state = Number(node.autonomous_state);
+      const rem = Number(node.phase_remaining_sec);
+      const concurrent = Number(node.concurrent_state);
+      const concurrentRem = Number(node.concurrent_remaining_sec);
+      const hasRem = Number.isFinite(rem) && rem >= 0;
+      const settlingAlongside = state === 1 && concurrent === 3;
+
+      if (settlingAlongside) {
+        const combined = Math.max(
+          Number.isFinite(rem) ? rem : 0,
+          Number.isFinite(concurrentRem) ? concurrentRem : 0
+        );
+        return {
+          phase: "Warming up · settling",
+          detail: combined > 0 ? `${formatCountdown(combined)} left` : "Finishing…",
+        };
+      }
+
+      const phase = sensorPhaseLabels[state] || "Sensor unavailable";
+      if ([0, 1, 3, 4].includes(state) && hasRem) {
+        return {
+          phase,
+          detail: rem > 0 ? `${formatCountdown(rem)} left` : "Finishing…",
+        };
+      }
+      return {
+        phase,
+        detail: describeScoreDetail(node, environmentFault, measurementUsable),
+      };
+    }
+
+    function describeEvaluationLabel(evaluationState) {
+      const key = String(evaluationState || "monitoring");
+      return evaluationLabels[key] || key.replaceAll("_", " ");
+    }
+
+    function isV5Node(node, tile) {
+      const hasProtocolVersion = node.protocol_version !== null
+        && node.protocol_version !== undefined
+        && node.protocol_version !== "";
+      const protocolVersion = Number(node.protocol_version);
+      // Explicit protocol wins. Unknown/offline defaults to autonomous v5+ UI so
+      // empty tiles do not regress into legacy VOC Index chrome.
+      if (hasProtocolVersion && Number.isFinite(protocolVersion)) return protocolVersion >= 5;
+      if (node.voc_change_score != null || node.autonomous_state != null) return true;
+      const tileProtocol = Number(tile?.dataset?.protocolVersion);
+      if (Number.isFinite(tileProtocol) && tileProtocol > 0) return tileProtocol >= 5;
+      return true;
+    }
+
+    function updateVocMetric(tile, node, bounds) {
+      const v5 = isV5Node(node, tile);
+      const labelEl = tile.querySelector('[data-field="voc-label"]');
+      const valueEl = tile.querySelector('[data-field="gas"]');
+      const unitEl = tile.querySelector('[data-field="voc-score-unit"]');
+      const phaseEl = tile.querySelector('[data-field="voc-phase"]');
+      const detailEl = tile.querySelector('[data-field="voc-detail"]');
+      const barEl = tile.querySelector('[data-bar="gas"]');
+      const vocIndex = node.voc_index;
+
+      const protocolVersion = Number(node.protocol_version);
+      tile.dataset.protocolVersion = v5
+        ? String(Number.isFinite(protocolVersion) && protocolVersion >= 5 ? protocolVersion : 6)
+        : String(Number.isFinite(protocolVersion) ? protocolVersion : 4);
+      if (!v5) {
+        setTextIfChanged(labelEl, "VOC index");
+        if (labelEl) labelEl.dataset.shortLabel = "VOC";
+        setTextIfChanged(valueEl, vocIndex == null ? "--" : String(vocIndex));
+        if (unitEl) unitEl.textContent = "";
+        setTextIfChanged(phaseEl, "Legacy VOC Index");
+        setTextIfChanged(detailEl, "");
+        tile.querySelector('[data-field="evaluation-progress"]')?.classList.add("hidden");
+        updateVocMarkers(tile, null);
+        setBarState(barEl, "gas", vocIndex, bounds ? bounds.gas : null);
+        return;
+      }
+
+      setTextIfChanged(labelEl, "VOC change score");
+      if (labelEl) labelEl.dataset.shortLabel = "VOC";
+      if (unitEl) unitEl.textContent = " / 100";
+      const environmentFault = Boolean(node.environment_fault) || Number(node.autonomous_state) === 8;
+      const measurementUsable = Boolean(node.measurement_usable) && !environmentFault;
+      const score = !measurementUsable || node.voc_change_score == null ? null : Number(node.voc_change_score);
+      const scoreAvailable = score != null && Number.isFinite(score);
+      setTextIfChanged(valueEl, scoreAvailable ? String(score) : "--");
+
+      const evaluationState = String(node.evaluation_state || node.voc_decision_state || "monitoring");
+      const status = describePhaseStatus(node, environmentFault, measurementUsable);
+      setTextIfChanged(phaseEl, status.phase);
+      setTextIfChanged(detailEl, status.detail);
+      updateEvaluationProgress(tile, node);
+      updateVocMarkers(tile, node.effective_voc_policy || cellConfigs[Number(node.node_id)]?.effective_voc_policy);
+      updateTileAssignment(tile, node);
+
+      if (!barEl) return;
+      const nextClass = !scoreAvailable
+        ? "bar-neutral metric-bar"
+        : (evaluationState.includes("critical") || evaluationState.includes("alert")
+          ? "bar-bad metric-bar"
+          : (evaluationState.includes("warning") ? "bar-warn metric-bar" : "bar-ok metric-bar"));
+      const nextWidth = `${(scoreAvailable ? clampPercent(score) : 0).toFixed(1)}%`;
+      if (barEl.className !== nextClass) barEl.className = nextClass;
+      if (barEl.style.width !== nextWidth) barEl.style.width = nextWidth;
+    }
+
+    function formatCompactDuration(seconds) {
+      const value = Math.max(0, Number(seconds) || 0);
+      if (value >= 60) {
+        const minutes = value / 60;
+        return `${Number.isInteger(minutes) ? minutes : minutes.toFixed(1)} min`;
+      }
+      return `${Math.round(value)}s`;
+    }
+
+    function updateEvaluationProgress(tile, node) {
+      const track = tile.querySelector('[data-field="evaluation-progress"]');
+      if (!track) return;
+      const state = String(node?.evaluation_state || node?.voc_decision_state || "");
+      const showTimer = Boolean(state) && state !== "monitoring";
+      track.classList.toggle("hidden", !showTimer);
+      track.classList.remove("is-warning", "is-alert", "is-critical");
+      if (!showTimer) {
+        setTextIfChanged(track.querySelector('[data-field="evaluation-progress-text"]'), "");
+        track.setAttribute("aria-valuenow", "0");
+        return;
+      }
+      if (state.includes("critical")) track.classList.add("is-critical");
+      else if (state.includes("alert")) track.classList.add("is-alert");
+      else if (state.includes("warning")) track.classList.add("is-warning");
+      const progress = Math.max(0, Math.min(1, Number(node?.progress) || 0));
+      const elapsed = Number(node?.elapsed_seconds) || 0;
+      const required = Number(node?.required_seconds) || 0;
+      const bar = track.querySelector('[data-field="evaluation-progress-bar"]');
+      if (bar) bar.style.width = `${(progress * 100).toFixed(1)}%`;
+      const label = describeEvaluationLabel(state);
+      setTextIfChanged(
+        track.querySelector('[data-field="evaluation-progress-text"]'),
+        node?.active_timer && required > 0
+          ? `${label} · ${formatCompactDuration(elapsed)} / ${formatCompactDuration(required)}`
+          : label
+      );
+      track.setAttribute("aria-valuenow", String(Math.round(progress * 100)));
+    }
+
+    function updateVocMarkers(tile, policy) {
+      [["warning", policy?.warning_score], ["alert", policy?.alert_score], ["critical", policy?.critical_score]]
+        .forEach(([name, raw]) => {
+          const marker = tile.querySelector(`[data-marker="${name}"]`);
+          if (!marker) return;
+          const value = raw == null ? null : Number(raw);
+          marker.classList.toggle("hidden", !Number.isFinite(value));
+          if (Number.isFinite(value)) marker.style.left = `${clampPercent(value)}%`;
+        });
+    }
+
+    function assignmentLabel(name, mode, source) {
+      if (!name) return mode === "custom" ? "Custom" : "Unassigned";
+      const modeLabel = {
+        linked: "profile defaults",
+        copied: "copied snapshot",
+        override: "cell override",
+      }[mode] || source || mode || "profile";
+      return `${name} · ${modeLabel}`;
+    }
+
+    function updateTileAssignment(tile, source) {
+      setTextIfChanged(
+        tile.querySelector('[data-field="assignment"]'),
+        assignmentLabel(source.profile_name, source.assignment_mode, source.profile_source)
+      );
     }
 
     function setTileOccupancy(tile, cellStatus) {
@@ -1494,12 +2012,11 @@
         return;
       }
 
-      setTextIfChanged(tile.querySelector('[data-field="gas"]'), gas == null ? "--" : String(gas));
       setTextIfChanged(tile.querySelector('[data-field="temperature"]'), temperature == null ? "--" : String(temperature));
       setTextIfChanged(tile.querySelector('[data-field="humidity"]'), humidity == null ? "--" : String(humidity));
       setTextIfChanged(tile.querySelector('[data-field="updated"]'), formatTime(updatedTs));
 
-      setBarState(tile.querySelector('[data-bar="gas"]'), "gas", gas, bounds ? bounds.gas : null);
+      updateVocMetric(tile, node, bounds);
       setBarState(tile.querySelector('[data-bar="temperature"]'), "temperature", temperature, bounds ? bounds.temperature : null);
       setBarState(tile.querySelector('[data-bar="humidity"]'), "humidity", humidity, bounds ? bounds.humidity : null);
       setTileAvailability(tile, "live", updatedTs);
@@ -1520,6 +2037,7 @@
     }
 
     const METRICS_ORDER = ["temperature", "humidity", "gas"];
+    const PROFILE_METRICS = ["temperature", "humidity"];
     const METRIC_META = {
       temperature: { label: "Temperature", unit: "\u00b0C" },
       humidity: { label: "Humidity", unit: "%" },
@@ -1536,7 +2054,13 @@
     let modalNodeId = null;
     let modalMode = "category";
     let modalSelectedCategoryId = null;
+    let modalSelectedProfileId = null;
+    let modalAssignmentMode = "linked";
     let modalCustomValues = {};
+    let modalVocPolicy = {};
+    let modalVocOverride = {};
+    let modalIsV5 = false;
+    let profileDraft = null;
 
     const modalEl = document.getElementById("cell-config-modal");
     const modalTitleEl = document.getElementById("modal-cell-title");
@@ -1544,6 +2068,7 @@
     const modalCategoryListEl = document.getElementById("modal-category-list");
     const modalCategoryInfoEl = document.getElementById("modal-category-info");
     const modalCustomViewEl = document.getElementById("modal-custom-view");
+    const modalProfilesViewEl = document.getElementById("modal-profiles-view");
     const modalErrorEl = document.getElementById("modal-error");
     const modalSaveBtn = document.getElementById("modal-save-btn");
 
@@ -1553,15 +2078,19 @@
     }
 
     function renderCategoryList() {
-      modalCategoryListEl.innerHTML = Object.entries(categories)
-        .map(([id, category]) => {
-          const active = id === modalSelectedCategoryId;
-          return `<button type="button" class="category-card${active ? " is-active" : ""}" data-category-id="${id}">${category.name}</button>`;
+      const entries = modalIsV5
+        ? productProfiles.map((profile) => [profile.profile_id, profile])
+        : Object.entries(categories);
+      modalCategoryListEl.innerHTML = entries
+        .map(([id, item]) => {
+          const active = modalIsV5 ? id === modalSelectedProfileId : id === modalSelectedCategoryId;
+          return `<button type="button" class="category-card${active ? " is-active" : ""}" data-item-id="${escapeHtml(id)}">${escapeHtml(item.name)}</button>`;
         })
         .join("");
       modalCategoryListEl.querySelectorAll(".category-card").forEach((btn) => {
         btn.addEventListener("click", () => {
-          modalSelectedCategoryId = btn.dataset.categoryId;
+          if (modalIsV5) modalSelectedProfileId = btn.dataset.itemId;
+          else modalSelectedCategoryId = btn.dataset.itemId;
           renderCategoryList();
           renderCategoryInfo();
           updateSaveEnabled();
@@ -1570,16 +2099,21 @@
     }
 
     function renderCategoryInfo() {
+      if (modalIsV5) {
+        renderProfileAssignmentInfo();
+        return;
+      }
       if (!modalSelectedCategoryId || !categories[modalSelectedCategoryId]) {
         modalCategoryInfoEl.classList.add("hidden");
         modalCategoryInfoEl.innerHTML = "";
         return;
       }
       const category = categories[modalSelectedCategoryId];
+      const categoryMetrics = METRICS_ORDER.filter((metric) => category[metric]);
       modalCategoryInfoEl.classList.remove("hidden");
       modalCategoryInfoEl.innerHTML = `
         <div class="modal-kicker" style="margin-bottom:0.45rem">Fixed bounds (read-only)</div>
-        ${METRICS_ORDER.map((metric) => `
+        ${categoryMetrics.map((metric) => `
           <div style="margin-bottom:0.45rem">
             <div style="font-weight:700;color:var(--ink)">${METRIC_META[metric].label}</div>
             <div style="display:flex;flex-wrap:wrap;gap:0.35rem 0.65rem">
@@ -1592,13 +2126,201 @@
       `;
     }
 
+    function renderProfileAssignmentInfo() {
+      const profile = productProfiles.find((item) => item.profile_id === modalSelectedProfileId);
+      if (!profile) {
+        modalCategoryInfoEl.classList.remove("hidden");
+        modalCategoryInfoEl.innerHTML = productProfiles.length
+          ? "Select a shared product profile."
+          : 'No profiles available. Open “Profiles” to create one.';
+        return;
+      }
+      if (!["linked", "copied", "override"].includes(modalAssignmentMode)) {
+        modalAssignmentMode = "linked";
+      }
+      const usesDefaults = modalAssignmentMode !== "override";
+      modalCategoryInfoEl.classList.remove("hidden");
+      modalCategoryInfoEl.innerHTML = `
+        <div class="modal-kicker">Assignment behavior</div>
+        <div class="assignment-options">
+          <label class="assignment-option"><input type="radio" name="assignment-mode" value="linked" ${modalAssignmentMode !== "copied" ? "checked" : ""}> Linked shared profile</label>
+          <label class="assignment-option"><input type="radio" name="assignment-mode" value="copied" ${modalAssignmentMode === "copied" ? "checked" : ""}> Copied independent snapshot</label>
+        </div>
+        <label class="toggle-row" ${modalAssignmentMode === "copied" ? 'style="display:none"' : ""}>
+          <span>Use profile defaults: <strong>${usesDefaults ? "Yes" : "No"}</strong></span>
+          <input id="profile-defaults-toggle" type="checkbox" ${usesDefaults ? "checked" : ""} aria-label="Use profile VOC defaults">
+        </label>
+        <p class="policy-note">Source: shared ${modalAssignmentMode === "copied" ? "snapshot" : "live profile"} · Effective policy shown below.</p>
+        ${modalAssignmentMode === "override"
+          ? `<div class="custom-metric-block" style="margin-top:.65rem">
+              <div class="custom-metric-title">Per-cell VOC override</div>
+              ${policyEditorHtml(modalVocOverride, true, profile.voc_policy)}
+              <button type="button" id="remove-override-btn" class="btn btn-secondary" style="margin-top:.65rem">Remove override / use defaults</button>
+            </div>`
+          : policySummaryHtml(profile.voc_policy)}
+      `;
+      modalCategoryInfoEl.querySelectorAll('input[name="assignment-mode"]').forEach((radio) => {
+        radio.addEventListener("change", () => {
+          modalAssignmentMode = radio.value === "copied" ? "copied" : "linked";
+          renderCategoryInfo();
+          validateCustomValues();
+        });
+      });
+      const defaultsToggle = document.getElementById("profile-defaults-toggle");
+      if (defaultsToggle) {
+        defaultsToggle.addEventListener("change", () => {
+          modalAssignmentMode = defaultsToggle.checked ? "linked" : "override";
+          if (defaultsToggle.checked) modalVocOverride = {};
+          renderCategoryInfo();
+          validateCustomValues();
+        });
+      }
+      document.getElementById("remove-override-btn")?.addEventListener("click", () => {
+        modalAssignmentMode = "linked";
+        modalVocOverride = {};
+        renderCategoryInfo();
+        validateCustomValues();
+      });
+      bindPolicyEditor(modalCategoryInfoEl, modalVocOverride, true, () => {
+        renderCategoryInfo();
+        validateCustomValues();
+      });
+    }
+
+    function formatPolicyMinutes(seconds) {
+      const minutes = Number(seconds) / 60;
+      if (!Number.isFinite(minutes)) return "—";
+      return `${Number.isInteger(minutes) ? minutes : minutes.toFixed(1)} min`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      })[char]);
+    }
+
+    function canonicalToSimple(metric, canonical) {
+      const limits = metricLimits[metric];
+      const green = canonical?.green?.[0] || { min: limits.min, max: limits.max };
+      let yellowLow = Number(green.min);
+      let yellowHigh = Number(green.max);
+      (canonical?.yellow || []).forEach((band) => {
+        if (Number(band.max) <= Number(green.min)) yellowLow = Math.min(yellowLow, Number(band.min));
+        if (Number(band.min) >= Number(green.max)) yellowHigh = Math.max(yellowHigh, Number(band.max));
+      });
+      return {
+        yellow_low: yellowLow,
+        green_low: Number(green.min),
+        green_high: Number(green.max),
+        yellow_high: yellowHigh,
+      };
+    }
+
+    function simpleToCanonical(metric, simple) {
+      const limits = metricLimits[metric];
+      const yellow = [];
+      const red = [];
+      if (simple.yellow_low < simple.green_low) yellow.push({ min: simple.yellow_low, max: simple.green_low });
+      if (simple.green_high < simple.yellow_high) yellow.push({ min: simple.green_high, max: simple.yellow_high });
+      if (Number(limits.min) < simple.yellow_low) red.push({ min: Number(limits.min), max: simple.yellow_low });
+      if (simple.yellow_high < Number(limits.max)) red.push({ min: simple.yellow_high, max: Number(limits.max) });
+      return {
+        green: [{ min: simple.green_low, max: simple.green_high }],
+        yellow,
+        red,
+      };
+    }
+
+    const POLICY_SCORE_FIELDS = [
+      ["warning_score", "Warning score"],
+      ["alert_score", "Alert score"],
+      ["critical_score", "Critical score"],
+    ];
+    const FIXED_VOC_DURATION_SECONDS = 30 * 60;
+
+    function normalizeVocPolicyScores(policy = {}) {
+      const warning = Math.round(Number(policy.warning_score ?? 25));
+      const alert = Math.round(Number(policy.alert_score ?? 50));
+      const critical = Math.round(Number(policy.critical_score ?? 75));
+      return {
+        warning_score: warning,
+        warning_sigma: 6,
+        warning_seconds: FIXED_VOC_DURATION_SECONDS,
+        warning_clear_score: Math.max(0, Math.min(warning - 5, 20)),
+        warning_clear_seconds: 5 * 60,
+        alert_score: alert,
+        alert_sigma: 10,
+        alert_seconds: FIXED_VOC_DURATION_SECONDS,
+        critical_score: critical,
+        critical_sigma: 10,
+        critical_seconds: FIXED_VOC_DURATION_SECONDS,
+      };
+    }
+
+    function policyEditorHtml(policy, partial = false, base = {}) {
+      const merged = { ...base, ...policy };
+      return `
+        <div class="custom-fields">
+          ${POLICY_SCORE_FIELDS.map(([key, label]) => {
+            const enabled = !partial || Object.prototype.hasOwnProperty.call(policy, key);
+            const raw = merged[key];
+            return `<div class="policy-field">
+              <div class="custom-field-label">${partial ? `<input type="checkbox" data-policy-enable="${key}" ${enabled ? "checked" : ""} aria-label="Override ${label}"> ` : ""}${label}</div>
+              <input type="number" inputmode="decimal" class="custom-input" style="width:100%" data-policy-key="${key}" data-policy-kind="score" min="0" max="100" value="${raw ?? ""}" ${partial && !enabled ? "disabled" : ""}>
+            </div>`;
+          }).join("")}
+        </div>
+        <p class="policy-note">Warning, alert, and critical each require 30 continuous minutes. Evidence gates stay fixed at 6σ / 10σ.</p>
+      `;
+    }
+
+    function policySummaryHtml(policy) {
+      if (!policy) return "";
+      return `<div class="custom-metric-block" style="margin-top:.65rem">
+        <div class="custom-metric-title">Effective VOC policy</div>
+        <div>Warning: ≥${policy.warning_score}</div>
+        <div>Alert: ≥${policy.alert_score}</div>
+        <div>Critical: ≥${policy.critical_score}</div>
+        <div>Duration: 30 min each · gates 6σ / 10σ</div>
+      </div>`;
+    }
+
+    function bindPolicyEditor(container, target, partial, rerender) {
+      container.querySelectorAll("[data-policy-key]").forEach((input) => {
+        input.addEventListener("change", () => {
+          const value = Number(input.value);
+          if (Number.isFinite(value)) target[input.dataset.policyKey] = Math.round(value);
+          if (profileDraft && target === profileDraft.voc_policy) {
+            const error = validateProfileDraft();
+            if (error) showModalError(error);
+            else modalErrorEl.classList.add("hidden");
+          } else {
+            validateCustomValues();
+          }
+        });
+      });
+      container.querySelectorAll("[data-policy-enable]").forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          const key = checkbox.dataset.policyEnable;
+          if (checkbox.checked) {
+            const profile = productProfiles.find((item) => item.profile_id === modalSelectedProfileId);
+            target[key] = profile?.voc_policy?.[key] ?? modalVocPolicy[key] ?? 0;
+          } else {
+            delete target[key];
+          }
+          rerender();
+        });
+      });
+    }
+
     function clampToLimits(metric, value) {
       const limits = metricLimits[metric];
       return Math.min(limits.max, Math.max(limits.min, value));
     }
 
     function renderCustomView() {
-      modalCustomViewEl.innerHTML = METRICS_ORDER.map((metric) => {
+      const editableMetrics = modalIsV5 ? PROFILE_METRICS : METRICS_ORDER;
+      modalCustomViewEl.innerHTML = editableMetrics.map((metric) => {
         const meta = METRIC_META[metric];
         const limits = metricLimits[metric];
         return `
@@ -1626,9 +2348,14 @@
             </div>
           </div>
         `;
-      }).join("");
+      }).join("") + (modalIsV5 ? `
+        <div class="custom-metric-block">
+          <div class="custom-metric-title">VOC relative-change policy</div>
+          ${policyEditorHtml(modalVocPolicy)}
+        </div>
+      ` : "");
 
-      METRICS_ORDER.forEach((metric) => {
+      editableMetrics.forEach((metric) => {
         CUSTOM_FIELDS.forEach((field) => {
           const input = modalCustomViewEl.querySelector(`.custom-input[data-metric="${metric}"][data-field="${field}"]`);
           if (input) input.value = modalCustomValues[metric][field];
@@ -1642,11 +2369,13 @@
         });
       });
       modalCustomViewEl.querySelectorAll(".custom-input").forEach((input) => {
+        if (input.dataset.policyKey) return;
         input.addEventListener("change", () => {
           const { metric, field } = input.dataset;
           setCustomValue(metric, field, Number(input.value));
         });
       });
+      if (modalIsV5) bindPolicyEditor(modalCustomViewEl, modalVocPolicy, false, renderCustomView);
     }
 
     function setCustomValue(metric, field, value) {
@@ -1659,13 +2388,21 @@
 
     function validateCustomValues() {
       let firstError = null;
-      METRICS_ORDER.forEach((metric) => {
+      const metricsToValidate = modalIsV5 ? PROFILE_METRICS : METRICS_ORDER;
+      metricsToValidate.forEach((metric) => {
         const v = modalCustomValues[metric];
         const ordered = v.yellow_low <= v.green_low && v.green_low <= v.green_high && v.green_high <= v.yellow_high;
         if (!ordered && !firstError) {
           firstError = `${METRIC_META[metric].label}: values must satisfy yellow low \u2264 green low \u2264 green high \u2264 yellow high`;
         }
       });
+      if (modalIsV5 && !firstError) {
+        const profile = productProfiles.find((item) => item.profile_id === modalSelectedProfileId);
+        const policy = modalMode === "category" && modalAssignmentMode === "override"
+          ? { ...(profile?.voc_policy || {}), ...modalVocOverride }
+          : modalVocPolicy;
+        firstError = validateVocPolicy(policy);
+      }
       if (firstError) {
         modalErrorEl.textContent = firstError;
         modalErrorEl.classList.remove("hidden");
@@ -1676,8 +2413,26 @@
       return !firstError;
     }
 
+    function validateVocPolicy(policy) {
+      const required = ["warning_score", "alert_score", "critical_score"];
+      if (required.some((key) => !Number.isFinite(Number(policy?.[key])))) {
+        return "Warning, alert, and critical scores are required";
+      }
+      if ([policy.warning_score, policy.alert_score, policy.critical_score].some((value) => Number(value) < 0 || Number(value) > 100)) {
+        return "VOC scores must be between 0 and 100";
+      }
+      if (!(Number(policy.warning_score) <= Number(policy.alert_score) && Number(policy.alert_score) <= Number(policy.critical_score))) {
+        return "VOC scores must satisfy warning ≤ alert ≤ critical";
+      }
+      return null;
+    }
+
     function updateSaveEnabled(customValid = true) {
-      modalSaveBtn.disabled = modalMode === "category" ? !modalSelectedCategoryId : !customValid;
+      modalSaveBtn.style.display = modalMode === "profiles" ? "none" : "";
+      if (modalMode === "profiles") return;
+      modalSaveBtn.disabled = modalMode === "category"
+        ? !(modalIsV5 ? modalSelectedProfileId : modalSelectedCategoryId) || !customValid
+        : !customValid;
     }
 
     function setModalMode(mode) {
@@ -1687,8 +2442,10 @@
       });
       modalCategoryViewEl.classList.toggle("hidden", mode !== "category");
       modalCustomViewEl.classList.toggle("hidden", mode !== "custom");
+      modalProfilesViewEl.classList.toggle("hidden", mode !== "profiles");
       modalErrorEl.classList.add("hidden");
-      if (mode === "custom") validateCustomValues();
+      if (mode === "profiles") renderProfileManager();
+      if (mode === "custom" || (mode === "category" && modalIsV5)) validateCustomValues();
       else updateSaveEnabled();
     }
 
@@ -1697,16 +2454,29 @@
       if (!cfg) return;
       modalNodeId = nodeId;
       modalTitleEl.textContent = cfg.label;
+      const tile = document.querySelector(`[data-sensor-id="node-${nodeId}"]`);
+      const protocolText = tile ? tile.dataset.protocolVersion : "";
+      modalIsV5 = protocolText === "" || Number(protocolText) >= 5;
       modalSelectedCategoryId = cfg.mode === "category" ? cfg.category_id : null;
+      modalSelectedProfileId = cfg.profile_id || productProfiles[0]?.profile_id || null;
+      // Assignment-tab modes are profile-based only. Custom cells start as linked
+      // so saving from Assignment cannot accidentally POST assignment_mode=custom.
+      modalAssignmentMode = ["linked", "copied", "override"].includes(cfg.assignment_mode)
+        ? cfg.assignment_mode
+        : "linked";
+      modalVocOverride = { ...(cfg.voc_policy_override || {}) };
       modalCustomValues = {};
       METRICS_ORDER.forEach((metric) => {
         modalCustomValues[metric] = { ...cfg.simple_bounds[metric] };
       });
+      modalVocPolicy = normalizeVocPolicyScores(cfg.effective_voc_policy || cfg.voc_policy || {});
 
       renderCategoryList();
       renderCategoryInfo();
       renderCustomView();
-      setModalMode(cfg.mode === "category" ? "category" : "custom");
+      document.querySelector('[data-mode="profiles"]').classList.toggle("hidden", !modalIsV5);
+      document.querySelector('[data-mode="category"]').textContent = modalIsV5 ? "Assignment" : "Category";
+      setModalMode(modalIsV5 ? (cfg.assignment_mode === "custom" ? "custom" : "category") : (cfg.mode === "category" ? "category" : "custom"));
 
       modalEl.classList.remove("hidden");
       modalEl.classList.add("flex");
@@ -1722,19 +2492,48 @@
       cellConfigs[nodeId] = cfg;
       const tile = document.querySelector(`[data-sensor-id="node-${nodeId}"]`);
       if (!tile) return;
-      const label = tile.querySelector('[data-field="assignment"]');
-      if (label) label.textContent = cfg.category_name || "Custom";
+      const protocolVersion = Number(tile.dataset.protocolVersion);
+      const preferProfile = !Number.isFinite(protocolVersion) || protocolVersion >= 5 || Boolean(cfg.profile_id || cfg.assignment_mode);
+      if (preferProfile) updateTileAssignment(tile, cfg);
+      else setTextIfChanged(tile.querySelector('[data-field="assignment"]'), cfg.category_name || "Custom");
+      updateVocMarkers(tile, cfg.effective_voc_policy || cfg.voc_policy);
     }
 
     async function saveCellConfig() {
       if (modalNodeId == null) return;
       let body;
       if (modalMode === "category") {
-        if (!modalSelectedCategoryId) return;
-        body = { mode: "category", category_id: modalSelectedCategoryId };
+        if (modalIsV5) {
+          if (!modalSelectedProfileId) return;
+          const assignmentMode = ["linked", "copied", "override"].includes(modalAssignmentMode)
+            ? modalAssignmentMode
+            : "linked";
+          body = {
+            assignment_mode: assignmentMode,
+            profile_id: modalSelectedProfileId,
+          };
+          if (assignmentMode === "override") {
+            body.voc_policy_override = Object.fromEntries(
+              ["warning_score", "alert_score", "critical_score"]
+                .filter((key) => Object.prototype.hasOwnProperty.call(modalVocOverride, key))
+                .map((key) => [key, Math.round(Number(modalVocOverride[key]))])
+            );
+          }
+        } else {
+          if (!modalSelectedCategoryId) return;
+          body = { mode: "category", category_id: modalSelectedCategoryId };
+        }
       } else {
         if (!validateCustomValues()) return;
-        body = { mode: "custom", custom_bounds: modalCustomValues };
+        body = {
+          mode: "custom",
+          custom_bounds: modalIsV5
+            ? Object.fromEntries(PROFILE_METRICS.map((metric) => [metric, modalCustomValues[metric]]))
+            : modalCustomValues,
+        };
+        if (modalIsV5) {
+          body.voc_policy = normalizeVocPolicyScores(modalVocPolicy);
+        }
       }
 
       modalSaveBtn.disabled = true;
@@ -1770,6 +2569,165 @@
       modalEl.addEventListener("click", (event) => {
         if (event.target === modalEl) closeCellConfigModal();
       });
+    }
+
+    function showModalError(message) {
+      modalErrorEl.textContent = message;
+      modalErrorEl.classList.remove("hidden");
+    }
+
+    async function requestJson(path, options = {}) {
+      const response = await fetch(apiUrl(path), options);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || `Request failed (${response.status})`);
+      return payload;
+    }
+
+    async function loadProductProfiles() {
+      try {
+        const payload = await requestJson("/api/product-profiles");
+        productProfiles = Array.isArray(payload.profiles) ? payload.profiles : [];
+      } catch (err) {
+        productProfiles = [];
+        console.error("Unable to load product profiles", err);
+      }
+    }
+
+    async function refreshCellConfigs() {
+      const payload = await requestJson("/api/cells/config");
+      (payload.cells || []).forEach((cfg) => applyCellConfigToTile(Number(cfg.node_id), cfg));
+    }
+
+    function blankProfileDraft(source = null) {
+      const fallbackCfg = cellConfigs[modalNodeId] || Object.values(cellConfigs)[0];
+      const boundsSource = source || fallbackCfg?.bounds || {};
+      const policySource = source?.voc_policy || fallbackCfg?.effective_voc_policy || fallbackCfg?.voc_policy || normalizeVocPolicyScores();
+      return {
+        profile_id: source?.profile_id || null,
+        name: source ? source.name : "New profile",
+        simple_bounds: Object.fromEntries(PROFILE_METRICS.map((metric) => [metric, canonicalToSimple(metric, boundsSource[metric])])),
+        voc_policy: normalizeVocPolicyScores(policySource),
+      };
+    }
+
+    function profileBoundsHtml(draft) {
+      return PROFILE_METRICS.map((metric) => {
+        const meta = METRIC_META[metric];
+        const limits = metricLimits[metric];
+        return `<div class="custom-metric-block">
+          <div class="custom-metric-title">${meta.label}${meta.unit ? ` (${meta.unit})` : ""}</div>
+          <div class="custom-fields">${CUSTOM_FIELDS.map((field) => `
+            <label><div class="custom-field-label">${CUSTOM_FIELD_LABELS[field]}</div>
+              <input type="number" class="custom-input" style="width:100%" data-profile-metric="${metric}" data-profile-field="${field}" min="${limits.min}" max="${limits.max}" value="${draft.simple_bounds[metric][field]}">
+            </label>`).join("")}</div>
+        </div>`;
+      }).join("");
+    }
+
+    function renderProfileManager() {
+      if (!profileDraft) profileDraft = blankProfileDraft(productProfiles[0] || null);
+      modalProfilesViewEl.innerHTML = `
+        <div class="profile-manager">
+          <div class="profile-list">
+            <button type="button" class="btn btn-primary" id="profile-new-btn">Create profile</button>
+            ${productProfiles.map((profile) => `<button type="button" class="category-card${profile.profile_id === profileDraft.profile_id ? " is-active" : ""}" data-edit-profile="${escapeHtml(profile.profile_id)}">${escapeHtml(profile.name)}</button>`).join("")}
+          </div>
+          <div class="profile-editor">
+            <div class="modal-kicker">${profileDraft.profile_id ? "Edit shared profile" : "New shared profile"}</div>
+            <input id="profile-name-input" class="profile-name-input" value="${escapeHtml(profileDraft.name)}" aria-label="Profile name">
+            ${profileBoundsHtml(profileDraft)}
+            <div class="custom-metric-block"><div class="custom-metric-title">VOC relative-change policy</div>${policyEditorHtml(profileDraft.voc_policy)}</div>
+            <div class="profile-toolbar">
+              <button type="button" class="btn btn-primary" id="profile-save-btn">${profileDraft.profile_id ? "Save profile" : "Create profile"}</button>
+              <button type="button" class="btn btn-secondary" id="profile-copy-btn">Copy as new</button>
+              ${profileDraft.profile_id ? '<button type="button" class="btn btn-danger" id="profile-delete-btn">Delete profile</button>' : ""}
+            </div>
+          </div>
+        </div>`;
+      modalProfilesViewEl.querySelectorAll("[data-edit-profile]").forEach((button) => {
+        button.addEventListener("click", () => {
+          profileDraft = blankProfileDraft(productProfiles.find((profile) => profile.profile_id === button.dataset.editProfile));
+          renderProfileManager();
+        });
+      });
+      document.getElementById("profile-new-btn").addEventListener("click", () => {
+        profileDraft = blankProfileDraft();
+        renderProfileManager();
+      });
+      document.getElementById("profile-name-input").addEventListener("input", (event) => { profileDraft.name = event.target.value; });
+      modalProfilesViewEl.querySelectorAll("[data-profile-metric]").forEach((input) => {
+        input.addEventListener("change", () => {
+          profileDraft.simple_bounds[input.dataset.profileMetric][input.dataset.profileField] = Number(input.value);
+        });
+      });
+      bindPolicyEditor(modalProfilesViewEl, profileDraft.voc_policy, false, renderProfileManager);
+      document.getElementById("profile-save-btn").addEventListener("click", saveProfileDraft);
+      document.getElementById("profile-copy-btn").addEventListener("click", () => {
+        profileDraft.profile_id = null;
+        profileDraft.name = `${profileDraft.name} Copy`;
+        renderProfileManager();
+      });
+      document.getElementById("profile-delete-btn")?.addEventListener("click", deleteProfileDraft);
+    }
+
+    function validateProfileDraft() {
+      if (!profileDraft.name.trim()) return "Profile name is required";
+      for (const metric of PROFILE_METRICS) {
+        const v = profileDraft.simple_bounds[metric];
+        const limits = metricLimits[metric];
+        if (CUSTOM_FIELDS.some((field) => !Number.isFinite(Number(v[field])))) {
+          return `${METRIC_META[metric].label}: all bounds are required`;
+        }
+        if (v.yellow_low < Number(limits.min) || v.yellow_high > Number(limits.max)) {
+          return `${METRIC_META[metric].label}: bounds must stay between ${limits.min} and ${limits.max}`;
+        }
+        if (!(v.yellow_low <= v.green_low && v.green_low <= v.green_high && v.green_high <= v.yellow_high)) {
+          return `${METRIC_META[metric].label}: bounds must be ordered low to high`;
+        }
+      }
+      return validateVocPolicy(profileDraft.voc_policy);
+    }
+
+    async function saveProfileDraft() {
+      const error = validateProfileDraft();
+      if (error) return showModalError(error);
+      const payload = {
+        name: profileDraft.name.trim(),
+        voc_policy: normalizeVocPolicyScores(profileDraft.voc_policy),
+        ...Object.fromEntries(PROFILE_METRICS.map((metric) => [metric, simpleToCanonical(metric, profileDraft.simple_bounds[metric])])),
+      };
+      try {
+        const saved = await requestJson(
+          profileDraft.profile_id ? `/api/product-profiles/${encodeURIComponent(profileDraft.profile_id)}` : "/api/product-profiles",
+          {
+            method: profileDraft.profile_id ? "PUT" : "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          }
+        );
+        const index = productProfiles.findIndex((profile) => profile.profile_id === saved.profile_id);
+        if (index >= 0) productProfiles[index] = saved;
+        else productProfiles.push(saved);
+        profileDraft = blankProfileDraft(saved);
+        await refreshCellConfigs();
+        renderProfileManager();
+        renderCategoryList();
+      } catch (err) {
+        showModalError(err.message || "Failed to save profile");
+      }
+    }
+
+    async function deleteProfileDraft() {
+      if (!profileDraft.profile_id || !window.confirm(`Delete shared profile “${profileDraft.name}”?`)) return;
+      try {
+        await requestJson(`/api/product-profiles/${encodeURIComponent(profileDraft.profile_id)}`, { method: "DELETE" });
+        productProfiles = productProfiles.filter((profile) => profile.profile_id !== profileDraft.profile_id);
+        profileDraft = blankProfileDraft(productProfiles[0] || null);
+        renderProfileManager();
+        renderCategoryList();
+      } catch (err) {
+        showModalError(err.message || "Profile cannot be deleted while linked to cells");
+      }
     }
 
     function makeOptionLabel(sensor) {
@@ -2289,16 +3247,22 @@
       });
     }
 
-    initControls();
-    initChartHoverTracking();
-    initTileBars();
-    initCellConfigModal();
-    switchTab("tiles");
-    markStaleTiles();
-    setInterval(markStaleTiles, 1000);
-    setInterval(() => {
-      if (activeTab === "history") refreshHistoryChart();
-    }, 30000);
+    async function initializeDashboard() {
+      await loadProductProfiles();
+      initControls();
+      initChartHoverTracking();
+      initTileBars();
+      Object.entries(cellConfigs).forEach(([nodeId, cfg]) => applyCellConfigToTile(Number(nodeId), cfg));
+      initCellConfigModal();
+      switchTab("tiles");
+      markStaleTiles();
+      setInterval(markStaleTiles, 1000);
+      setInterval(() => {
+        if (activeTab === "history") refreshHistoryChart();
+      }, 30000);
+    }
+
+    initializeDashboard();
   </script>
 </body>
 </html>

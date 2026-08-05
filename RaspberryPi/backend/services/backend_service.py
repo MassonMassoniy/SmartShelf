@@ -27,6 +27,16 @@ METRIC_FIELDS = [
     "nox_index",
     "sraw_voc",
     "sraw_nox",
+    "voc_change_score",
+]
+
+LATEST_MINUTE_FIELDS = [
+    "autonomous_state",
+    "baseline_valid",
+    "environment_fault",
+    "voc_6sigma",
+    "voc_10sigma",
+    "measurement_usable",
 ]
 
 
@@ -87,7 +97,9 @@ class BackendService:
         self.storage = SQLiteStorage(db_path=db_path)
 
         self.cell_config = CellConfigStore(storage=self.storage)
-        self.trigger_service = TriggerService(cell_config=self.cell_config, notifier=EmailNotifier())
+        self.trigger_service = TriggerService(
+            cell_config=self.cell_config, notifier=EmailNotifier(), storage=self.storage
+        )
 
         self.decode_errors = 0
         self._minute_samples: Dict[tuple[int, int], List[dict]] = defaultdict(list)
@@ -155,10 +167,18 @@ class BackendService:
         }
 
         for field in METRIC_FIELDS:
-            values = [float(s[field]) for s in samples if s.get(field) is not None]
+            values = [
+                float(s[field])
+                for s in samples
+                if s.get(field) is not None
+                and (field != "voc_change_score" or s.get("measurement_usable"))
+            ]
             if use_outlier_filter:
                 values = _filter_iqr(values)
             row[field] = _compute_mean(values)
+        for field in LATEST_MINUTE_FIELDS:
+            value = latest.get(field)
+            row[field] = int(value) if isinstance(value, bool) else value
         return row
 
     def flush_finished_minutes(self, current_bucket: Optional[int] = None) -> bool:
@@ -244,7 +264,13 @@ class BackendService:
         latest = self.cache.latest_by_node(max_age_seconds=self.stale_seconds)
         if self.allowed_node_ids is not None:
             latest = {node_id: node for node_id, node in latest.items() if node_id in self.allowed_node_ids}
-        return [with_cell_occupancy(latest[node_id]) for node_id in sorted(latest.keys())]
+        result = []
+        now = time.time()
+        for node_id in sorted(latest.keys()):
+            node = with_cell_occupancy(latest[node_id])
+            node.update(self.trigger_service.get_voc_status(node_id, now=now))
+            result.append(node)
+        return result
 
     def get_realtime_window(self, window_seconds: int) -> Dict[int, List[dict]]:
         window = self.cache.get_window(window_seconds=window_seconds)
