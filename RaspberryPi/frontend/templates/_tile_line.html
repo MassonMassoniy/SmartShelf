@@ -115,15 +115,10 @@
           {% set _rem = reading.phase_remaining_sec if reading else none %}
           {% set _concurrent = reading.concurrent_state if reading else none %}
           {% set _crem = reading.concurrent_remaining_sec if reading else none %}
-          {% if _state == 1 and _concurrent == 3 %}
-            {% set _phase = "Warming up · settling" %}
-            {% set _combined = [_rem or 0, _crem or 0]|max %}
-            {% set _detail = ("%d:%02d left"|format((_combined // 60), (_combined % 60))) if _combined else "Finishing…" %}
-          {% else %}
-            {% set _phase = {0:"Warming up",1:"Warming up",2:"Shelf empty",3:"Product settling",4:"Learning baseline",5:"Tracking product",8:"Humidity fault"}.get(_state, "Sensor unavailable") %}
-            {% if _state in [0, 1, 3, 4] and _rem %}
-              {% set _detail = "%d:%02d left"|format((_rem // 60), (_rem % 60)) %}
-            {% elif reading.environment_fault or _state == 8 %}
+          {% set _occupied = reading.cell_status == 'full' or (reading.cell_empty == false and reading.cell_status != 'empty') %}
+          {% if _state == 5 %}
+            {% set _phase = "Monitoring" %}
+            {% if reading.environment_fault or _state == 8 %}
               {% set _detail = "Score paused" %}
             {% elif not reading.baseline_valid %}
               {% set _detail = "Waiting for baseline" %}
@@ -132,6 +127,25 @@
             {% else %}
               {% set _detail = "Score live" %}
             {% endif %}
+          {% elif _state == 4 %}
+            {% set _phase = "Baselining" %}
+            {% set _detail = ("%d:%02d left"|format((_rem // 60), (_rem % 60))) if _rem else "Finishing…" %}
+          {% elif _state == 3 or (_state == 1 and _concurrent == 3) or (_occupied and _state in [1, 2]) %}
+            {% set _phase = "Product settling" %}
+            {% set _settle_rem = _crem if (_concurrent == 3 and _crem) else _rem %}
+            {% set _detail = ("%d:%02d left"|format((_settle_rem // 60), (_settle_rem % 60))) if _settle_rem else "Starting…" %}
+          {% elif _state in [0, 1] %}
+            {% set _phase = "Warming up" %}
+            {% set _detail = ("%d:%02d left"|format((_rem // 60), (_rem % 60))) if _rem else "Finishing…" %}
+          {% elif _state == 2 %}
+            {% set _phase = "Shelf empty" %}
+            {% set _detail = "Waiting for baseline" if not reading.baseline_valid else "Score not ready" %}
+          {% elif reading.environment_fault or _state == 8 %}
+            {% set _phase = "Humidity fault" %}
+            {% set _detail = "Score paused" %}
+          {% else %}
+            {% set _phase = "Sensor unavailable" %}
+            {% set _detail = "" %}
           {% endif %}
         {% else %}
           {% set _phase = "Legacy VOC Index" %}

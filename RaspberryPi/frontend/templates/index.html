@@ -1741,8 +1741,8 @@
       1: "Warming up",
       2: "Shelf empty",
       3: "Product settling",
-      4: "Learning baseline",
-      5: "Tracking product",
+      4: "Baselining",
+      5: "Monitoring",
       8: "Humidity fault",
     };
 
@@ -1771,34 +1771,63 @@
       return "Score live";
     }
 
+    function isCellOccupied(node) {
+      if (node.cell_status === "full") return true;
+      if (node.cell_status === "empty" || node.cell_status === "unknown") return false;
+      return node.cell_empty === false;
+    }
+
+    function countdownDetail(seconds) {
+      const rem = Number(seconds);
+      if (!Number.isFinite(rem) || rem < 0) return "Starting…";
+      return rem > 0 ? `${formatCountdown(rem)} left` : "Finishing…";
+    }
+
     function describePhaseStatus(node, environmentFault, measurementUsable) {
       const state = Number(node.autonomous_state);
       const rem = Number(node.phase_remaining_sec);
       const concurrent = Number(node.concurrent_state);
       const concurrentRem = Number(node.concurrent_remaining_sec);
-      const hasRem = Number.isFinite(rem) && rem >= 0;
+      const occupied = isCellOccupied(node);
       const settlingAlongside = state === 1 && concurrent === 3;
 
-      if (settlingAlongside) {
-        const combined = Math.max(
-          Number.isFinite(rem) ? rem : 0,
-          Number.isFinite(concurrentRem) ? concurrentRem : 0
-        );
+      // Occupied cells never show "Shelf empty". Prefer the product lifecycle.
+      if (state === 5) {
         return {
-          phase: "Warming up · settling",
-          detail: combined > 0 ? `${formatCountdown(combined)} left` : "Finishing…",
+          phase: "Monitoring",
+          detail: describeScoreDetail(node, environmentFault, measurementUsable),
         };
       }
-
-      const phase = sensorPhaseLabels[state] || "Sensor unavailable";
-      if ([0, 1, 3, 4].includes(state) && hasRem) {
+      if (state === 4) {
+        return { phase: "Baselining", detail: countdownDetail(rem) };
+      }
+      if (state === 3 || settlingAlongside) {
+        const settleRem = settlingAlongside
+          ? (Number.isFinite(concurrentRem) ? concurrentRem : rem)
+          : rem;
+        return { phase: "Product settling", detail: countdownDetail(settleRem) };
+      }
+      if (occupied && (state === 2 || state === 1 || !Number.isFinite(state))) {
+        // ESP insert confirm / settle start can lag the Full pill; keep the
+        // operator-facing sequence aligned with occupancy.
         return {
-          phase,
-          detail: rem > 0 ? `${formatCountdown(rem)} left` : "Finishing…",
+          phase: "Product settling",
+          detail: countdownDetail(
+            Number.isFinite(concurrentRem) && concurrentRem > 0 ? concurrentRem : rem
+          ),
         };
+      }
+      if (state === 0 || state === 1) {
+        return { phase: "Warming up", detail: countdownDetail(rem) };
+      }
+      if (state === 2) {
+        return { phase: "Shelf empty", detail: describeScoreDetail(node, environmentFault, measurementUsable) };
+      }
+      if (state === 8 || environmentFault) {
+        return { phase: "Humidity fault", detail: "Score paused" };
       }
       return {
-        phase,
+        phase: sensorPhaseLabels[state] || "Sensor unavailable",
         detail: describeScoreDetail(node, environmentFault, measurementUsable),
       };
     }
