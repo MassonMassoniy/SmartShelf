@@ -130,10 +130,19 @@
           {% elif _state == 4 %}
             {% set _phase = "Baselining" %}
             {% set _detail = ("%d:%02d left"|format((_rem // 60), (_rem % 60))) if _rem else "Finishing…" %}
-          {% elif _state == 3 or (_state == 1 and _concurrent == 3) or (_occupied and _state in [1, 2]) %}
+          {% elif _state == 3 %}
             {% set _phase = "Product settling" %}
-            {% set _settle_rem = _crem if (_concurrent == 3 and _crem) else _rem %}
-            {% set _detail = ("%d:%02d left"|format((_settle_rem // 60), (_settle_rem % 60))) if _settle_rem else "Starting…" %}
+            {% if _rem %}
+              {% set _detail = "%d:%02d left"|format((_rem // 60), (_rem % 60)) %}
+              {% if _concurrent == 1 and _crem %}
+                {% set _detail = _detail ~ " · warm-up %d:%02d"|format((_crem // 60), (_crem % 60)) %}
+              {% endif %}
+            {% else %}
+              {% set _detail = "Starting…" %}
+            {% endif %}
+          {% elif _occupied and _state == 2 %}
+            {% set _phase = "Detecting product…" %}
+            {% set _detail = "Confirming presence" %}
           {% elif _state in [0, 1] %}
             {% set _phase = "Warming up" %}
             {% set _detail = ("%d:%02d left"|format((_rem // 60), (_rem % 60))) if _rem else "Finishing…" %}

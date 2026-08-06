@@ -56,17 +56,17 @@ class ProtocolDecoderTests(unittest.TestCase):
             50,
             10,
             255,
-            1,
+            3,
             7,
             180,
-            3,
+            1,
             240,
         )
         packet = decode_payload(payload)
         self.assertEqual(packet.protocol_version, 6)
-        self.assertEqual(packet.autonomous_state, 1)
+        self.assertEqual(packet.autonomous_state, 3)
         self.assertEqual(packet.phase_remaining_sec, 180)
-        self.assertEqual(packet.concurrent_state, 3)
+        self.assertEqual(packet.concurrent_state, 1)
         self.assertEqual(packet.concurrent_remaining_sec, 240)
         self.assertIsNone(packet.voc_change_score)
         self.assertFalse(packet.measurement_usable)

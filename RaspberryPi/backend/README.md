@@ -167,7 +167,7 @@ Manufacturer offset  Size  Field
 15                   1     ESP lifecycle state
 16                   2     Packet sequence
 18                   2     Phase remaining seconds (v6)
-20                   1     Concurrent state (v6; 3=settling during stabilize)
+20                   1     Concurrent state (v6; 1=stabilize while settling)
 21                   2     Concurrent remaining seconds (v6)
 ```
 
@@ -179,7 +179,9 @@ baseline valid, bit 4 environment fault, bit 5 6-sigma evidence, bit 6
 Firmware defaults are 10 seconds conditioning, 5 minutes stabilization,
 30 seconds insertion confirmation, 60 seconds removal confirmation, 5 minutes
 headspace settling (may run concurrently with stabilization when a product is
-inserted during warm-up), 15 one-minute baseline medians, 90% RH fault entry,
+inserted during warm-up; proximity full/empty matches the dashboard at
+prox > 20 = full, prox ≤ 20 = empty),
+15 one-minute baseline medians, 90% RH fault entry,
 87% RH recovery for five continuous minutes, and a 25-tick minimum noise floor.
 `VOC_TICKS_PER_DOUBLING=870` is only the SGP41 datasheet's typical ethanol
 response under controlled conditions. It creates a dimensionless relative

@@ -1789,9 +1789,7 @@
       const concurrent = Number(node.concurrent_state);
       const concurrentRem = Number(node.concurrent_remaining_sec);
       const occupied = isCellOccupied(node);
-      const settlingAlongside = state === 1 && concurrent === 3;
 
-      // Occupied cells never show "Shelf empty". Prefer the product lifecycle.
       if (state === 5) {
         return {
           phase: "Monitoring",
@@ -1801,27 +1799,28 @@
       if (state === 4) {
         return { phase: "Baselining", detail: countdownDetail(rem) };
       }
-      if (state === 3 || settlingAlongside) {
-        const settleRem = settlingAlongside
-          ? (Number.isFinite(concurrentRem) ? concurrentRem : rem)
-          : rem;
-        return { phase: "Product settling", detail: countdownDetail(settleRem) };
+      if (state === 3) {
+        // Optional warm-up still running in the background (concurrent state 1).
+        const detail = countdownDetail(rem);
+        if (concurrent === 1 && Number.isFinite(concurrentRem) && concurrentRem > 0) {
+          return {
+            phase: "Product settling",
+            detail: `${detail} · warm-up ${formatCountdown(concurrentRem)}`,
+          };
+        }
+        return { phase: "Product settling", detail };
       }
-      if (occupied && (state === 2 || state === 1 || !Number.isFinite(state))) {
-        // ESP insert confirm / settle start can lag the Full pill; keep the
-        // operator-facing sequence aligned with occupancy.
-        return {
-          phase: "Product settling",
-          detail: countdownDetail(
-            Number.isFinite(concurrentRem) && concurrentRem > 0 ? concurrentRem : rem
-          ),
-        };
+      if (occupied && state === 2) {
+        return { phase: "Detecting product…", detail: "Confirming presence" };
       }
       if (state === 0 || state === 1) {
         return { phase: "Warming up", detail: countdownDetail(rem) };
       }
       if (state === 2) {
-        return { phase: "Shelf empty", detail: describeScoreDetail(node, environmentFault, measurementUsable) };
+        return {
+          phase: "Shelf empty",
+          detail: describeScoreDetail(node, environmentFault, measurementUsable),
+        };
       }
       if (state === 8 || environmentFault) {
         return { phase: "Humidity fault", detail: "Score paused" };

@@ -51,8 +51,11 @@ constexpr float TEN_SIGMA_MULTIPLIER = 10.0f;
 constexpr size_t SRAW_RING_SIZE = 60;
 constexpr size_t BASELINE_MINUTE_SAMPLES = 15;
 
-constexpr uint16_t VCNL4040_PS_LOW_THRESHOLD = 1200;
-constexpr uint16_t VCNL4040_PS_HIGH_THRESHOLD = 2000;
+// Match Raspberry Pi EMPTY_CELL_PROXIMITY_THRESHOLD: prox > 20 => full,
+// prox <= 20 => empty. Hardware interrupt bounds use the same trip point.
+constexpr uint16_t OCCUPANCY_PROXIMITY_THRESHOLD = 20;
+constexpr uint16_t VCNL4040_PS_LOW_THRESHOLD = OCCUPANCY_PROXIMITY_THRESHOLD;
+constexpr uint16_t VCNL4040_PS_HIGH_THRESHOLD = OCCUPANCY_PROXIMITY_THRESHOLD;
 constexpr uint16_t VCNL4040_PS_CONF12_MAX_RANGE = 0x0B0E;
 constexpr uint16_t VCNL4040_PS_CONF3MS_MAX_RANGE = 0x0700;
 
@@ -163,9 +166,10 @@ uint32_t insertionStartedMs = 0;
 uint32_t removalStartedMs = 0;
 
 // Product settling can run concurrently with startup stabilization when a
-// product is inserted during the 5-minute warm-up window.
+// product is inserted during the warm-up window.
 bool settlingActive = false;
 uint32_t settlingStartedMs = 0;
+bool settlingCompleted = false;
 
 bool environmentFault = false;
 bool recoveryTimerActive = false;
@@ -227,6 +231,7 @@ bool settlingComplete(uint32_t now) {
 
 void startProductSettling(uint32_t now) {
     settlingActive = true;
+    settlingCompleted = false;
     settlingStartedMs = now;
     baselineValid = false;
     baselineMinuteCount = 0;
@@ -238,6 +243,21 @@ void startProductSettling(uint32_t now) {
 void clearSettling() {
     settlingActive = false;
     settlingStartedMs = 0;
+    settlingCompleted = false;
+}
+
+void markSettlingCompletedIfDue(uint32_t now) {
+    if (settlingActive && !settlingCompleted && settlingComplete(now)) {
+        settlingCompleted = true;
+        Serial.println(F("[SETTLE] Product settling complete"));
+    }
+}
+
+uint16_t settlingRemainingSeconds(uint32_t now) {
+    if (!settlingActive || settlingCompleted) {
+        return 0;
+    }
+    return remainingSeconds(now, settlingStartedMs, PRODUCT_SETTLING_MS);
 }
 
 uint16_t baseliningRemainingSeconds() {
@@ -271,7 +291,17 @@ const char* stateName(SmartShelfState state) {
 }
 
 SmartShelfState advertisedState() {
-    return environmentFault ? SmartShelfState::ENVIRONMENT_FAULT : lifecycleState;
+    if (environmentFault) {
+        return SmartShelfState::ENVIRONMENT_FAULT;
+    }
+    // While settle is in progress, surface settling to the dashboard even if
+    // internal warm-up is still STABILIZING.
+    if (settlingActive && !settlingCompleted &&
+        (lifecycleState == SmartShelfState::STABILIZING ||
+         lifecycleState == SmartShelfState::PRODUCT_SETTLING)) {
+        return SmartShelfState::PRODUCT_SETTLING;
+    }
+    return lifecycleState;
 }
 
 void IRAM_ATTR onVcnl4040Interrupt() {
@@ -691,26 +721,32 @@ void publishBlePacket(const Measurement& measurement) {
     payload.concurrentRemainingSec = 0;
 
     if (!environmentFault) {
+        markSettlingCompletedIfDue(now);
+        const bool settleRunning = settlingActive && !settlingCompleted;
+        const uint16_t settleRem = settlingRemainingSeconds(now);
         switch (lifecycleState) {
             case SmartShelfState::CONDITIONING:
                 payload.phaseRemainingSec =
                     remainingSeconds(now, setupMs, SGP41_CONDITIONING_MS);
                 break;
-            case SmartShelfState::STABILIZING:
-                payload.phaseRemainingSec = remainingSeconds(
+            case SmartShelfState::STABILIZING: {
+                const uint16_t stabilizeRem = remainingSeconds(
                     now, stateStartedMs, STARTUP_STABILIZATION_MS);
-                if (settlingActive && !settlingComplete(now)) {
+                if (settleRunning) {
+                    // Dashboard primary phase is settling while warm-up continues.
+                    payload.phaseRemainingSec = settleRem;
                     payload.concurrentState =
-                        static_cast<uint8_t>(SmartShelfState::PRODUCT_SETTLING);
-                    payload.concurrentRemainingSec = remainingSeconds(
-                        now, settlingStartedMs, PRODUCT_SETTLING_MS);
+                        static_cast<uint8_t>(SmartShelfState::STABILIZING);
+                    payload.concurrentRemainingSec = stabilizeRem;
+                } else {
+                    payload.phaseRemainingSec = stabilizeRem;
                 }
                 break;
+            }
             case SmartShelfState::PRODUCT_SETTLING:
-                payload.phaseRemainingSec = remainingSeconds(
-                    now,
-                    settlingActive ? settlingStartedMs : stateStartedMs,
-                    PRODUCT_SETTLING_MS);
+                payload.phaseRemainingSec = settleRunning
+                    ? settleRem
+                    : remainingSeconds(now, stateStartedMs, PRODUCT_SETTLING_MS);
                 break;
             case SmartShelfState::BASELINING:
                 payload.phaseRemainingSec = baseliningRemainingSeconds();
@@ -772,7 +808,7 @@ PresenceEvent updatePresence(bool valid, uint16_t proximity, uint32_t now) {
     }
     if (!productPresent) {
         removalTimerActive = false;
-        if (proximity > VCNL4040_PS_HIGH_THRESHOLD) {
+        if (proximity > OCCUPANCY_PROXIMITY_THRESHOLD) {
             if (!insertionTimerActive) {
                 insertionTimerActive = true;
                 insertionStartedMs = now;
@@ -787,7 +823,7 @@ PresenceEvent updatePresence(bool valid, uint16_t proximity, uint32_t now) {
         }
     } else {
         insertionTimerActive = false;
-        if (proximity < VCNL4040_PS_LOW_THRESHOLD) {
+        if (proximity <= OCCUPANCY_PROXIMITY_THRESHOLD) {
             if (!removalTimerActive) {
                 removalTimerActive = true;
                 removalStartedMs = now;
@@ -805,6 +841,7 @@ PresenceEvent updatePresence(bool valid, uint16_t proximity, uint32_t now) {
 }
 
 void restoreAfterStabilization(uint32_t now) {
+    markSettlingCompletedIfDue(now);
     if (!productPresent) {
         clearSettling();
         clearProductCycle(now);
@@ -830,7 +867,8 @@ void restoreAfterStabilization(uint32_t now) {
         // Product present after warm-up without a settle clock (rare); start one.
         startProductSettling(now);
     }
-    if (!settlingComplete(now)) {
+    markSettlingCompletedIfDue(now);
+    if (!settlingCompleted) {
         transitionLifecycle(SmartShelfState::PRODUCT_SETTLING, now, true);
         return;
     }
@@ -1001,15 +1039,12 @@ void printDiagnostics(const Measurement& measurement, uint32_t now) {
             Serial.print(remainingSeconds(now, setupMs, SGP41_CONDITIONING_MS));
         } else if (lifecycleState == SmartShelfState::STABILIZING) {
             Serial.print(remainingSeconds(now, stateStartedMs, STARTUP_STABILIZATION_MS));
-            if (settlingActive) {
+            if (settlingActive && !settlingCompleted) {
                 Serial.print(F(" settle="));
-                Serial.print(remainingSeconds(now, settlingStartedMs, PRODUCT_SETTLING_MS));
+                Serial.print(settlingRemainingSeconds(now));
             }
         } else if (lifecycleState == SmartShelfState::PRODUCT_SETTLING) {
-            Serial.print(remainingSeconds(
-                now,
-                settlingActive ? settlingStartedMs : stateStartedMs,
-                PRODUCT_SETTLING_MS));
+            Serial.print(settlingRemainingSeconds(now));
         } else {
             Serial.print(baseliningRemainingSeconds());
         }
@@ -1148,6 +1183,7 @@ void loop() {
     updateEnvironmentFault(measurement, now);
     const PresenceEvent presenceEvent =
         updatePresence(measurement.proximityOk, measurement.proximity, now);
+    markSettlingCompletedIfDue(now);
 
     if (lifecycleState == SmartShelfState::CONDITIONING &&
         elapsed(now, setupMs, SGP41_CONDITIONING_MS)) {
@@ -1172,10 +1208,11 @@ void loop() {
         }
         if (lifecycleState == SmartShelfState::PRODUCT_SETTLING &&
             productPresent &&
-            elapsed(
-                now,
-                settlingActive ? settlingStartedMs : stateStartedMs,
-                PRODUCT_SETTLING_MS)) {
+            (settlingCompleted ||
+             elapsed(
+                 now,
+                 settlingActive ? settlingStartedMs : stateStartedMs,
+                 PRODUCT_SETTLING_MS))) {
             clearSettling();
             transitionLifecycle(SmartShelfState::BASELINING, now, true);
         }
