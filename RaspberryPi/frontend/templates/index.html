@@ -398,6 +398,43 @@
       color: var(--ink);
     }
 
+    .metric-value--voc {
+      display: inline-flex;
+      align-items: baseline;
+      justify-content: flex-end;
+      gap: 0.35rem;
+      min-width: 0;
+      max-width: 68%;
+    }
+
+    .voc-score-group {
+      white-space: nowrap;
+    }
+
+    .voc-index-group {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.18rem;
+      min-width: 0;
+      white-space: nowrap;
+      font-weight: 600;
+      font-size: 0.86em;
+      color: var(--ink-faint);
+    }
+
+    .voc-index-group.hidden {
+      display: none;
+    }
+
+    .voc-index-sep {
+      opacity: 0.7;
+    }
+
+    .voc-index-label {
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+
     .metric-track {
       position: relative;
       height: 0.55rem;
@@ -1430,6 +1467,19 @@
 
       .metric-value { font-size: 0.72rem; }
 
+      .metric-value--voc {
+        gap: 0.22rem;
+        max-width: 72%;
+      }
+
+      .voc-index-group {
+        font-size: 0.82em;
+      }
+
+      .voc-index-label {
+        display: none;
+      }
+
       .metric-track { height: 0.32rem; }
 
       .metric-row:has(.voc-track) { padding-top: 0.12rem; }
@@ -1714,6 +1764,7 @@
       if (Number(tile.dataset.protocolVersion) >= 5) {
         setTextIfChanged(tile.querySelector('[data-field="voc-phase"]'), "Sensor unavailable");
         setTextIfChanged(tile.querySelector('[data-field="voc-detail"]'), "Score unavailable");
+        tile.querySelector('[data-field="voc-index-group"]')?.classList.remove("hidden");
         updateEvaluationProgress(tile, null);
       }
       setTextIfChanged(tile.querySelector('[data-field="updated"]'), updatedTs ? formatTime(updatedTs) : "--:--:--");
@@ -1854,10 +1905,12 @@
       const labelEl = tile.querySelector('[data-field="voc-label"]');
       const valueEl = tile.querySelector('[data-field="gas"]');
       const unitEl = tile.querySelector('[data-field="voc-score-unit"]');
+      const indexEl = tile.querySelector('[data-field="voc-index"]');
+      const indexGroupEl = tile.querySelector('[data-field="voc-index-group"]');
       const phaseEl = tile.querySelector('[data-field="voc-phase"]');
       const detailEl = tile.querySelector('[data-field="voc-detail"]');
       const barEl = tile.querySelector('[data-bar="gas"]');
-      const vocIndex = node.voc_index;
+      const vocIndex = node.voc_index != null ? node.voc_index : node.gas;
 
       const protocolVersion = Number(node.protocol_version);
       tile.dataset.protocolVersion = v5
@@ -1868,6 +1921,8 @@
         if (labelEl) labelEl.dataset.shortLabel = "VOC";
         setTextIfChanged(valueEl, vocIndex == null ? "--" : String(vocIndex));
         if (unitEl) unitEl.textContent = "";
+        setTextIfChanged(indexEl, "");
+        indexGroupEl?.classList.add("hidden");
         setTextIfChanged(phaseEl, "Legacy VOC Index");
         setTextIfChanged(detailEl, "");
         tile.querySelector('[data-field="evaluation-progress"]')?.classList.add("hidden");
@@ -1876,9 +1931,11 @@
         return;
       }
 
-      setTextIfChanged(labelEl, "VOC change score");
+      setTextIfChanged(labelEl, "VOC change");
       if (labelEl) labelEl.dataset.shortLabel = "VOC";
       if (unitEl) unitEl.textContent = " / 100";
+      indexGroupEl?.classList.remove("hidden");
+      setTextIfChanged(indexEl, vocIndex == null ? "--" : String(vocIndex));
       const environmentFault = Boolean(node.environment_fault) || Number(node.autonomous_state) === 8;
       const measurementUsable = Boolean(node.measurement_usable) && !environmentFault;
       const score = !measurementUsable || node.voc_change_score == null ? null : Number(node.voc_change_score);

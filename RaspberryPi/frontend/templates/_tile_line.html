@@ -100,8 +100,17 @@
     {% if g_pct > 100 %}{% set g_pct = 100 %}{% endif %}
     <div class="metric-row">
       <div class="metric-label-row">
-        <span class="metric-label" data-field="voc-label" data-short-label="VOC">{% if is_v5 %}VOC change score{% else %}VOC index{% endif %}</span>
-        <span class="metric-value"><span data-field="gas">{% if is_v5 %}{% if not score_unavailable %}{{ reading.voc_change_score }}{% else %}--{% endif %}{% elif has_data and reading.gas is not none %}{{ reading.gas }}{% else %}--{% endif %}</span><span data-field="voc-score-unit">{% if is_v5 %} / 100{% endif %}</span></span>
+        <span class="metric-label" data-field="voc-label" data-short-label="VOC">{% if is_v5 %}VOC change{% else %}VOC index{% endif %}</span>
+        <span class="metric-value metric-value--voc">
+          <span class="voc-score-group">
+            <span data-field="gas">{% if is_v5 %}{% if not score_unavailable %}{{ reading.voc_change_score }}{% else %}--{% endif %}{% elif has_data and reading.gas is not none %}{{ reading.gas }}{% else %}--{% endif %}</span><span data-field="voc-score-unit">{% if is_v5 %} / 100{% endif %}</span>
+          </span>
+          <span class="voc-index-group{% if not is_v5 %} hidden{% endif %}" data-field="voc-index-group" title="VOC index">
+            <span class="voc-index-sep" aria-hidden="true">·</span>
+            <span class="voc-index-label">idx</span>
+            <span data-field="voc-index">{% if is_v5 %}{% if has_data and reading.gas is not none %}{{ reading.gas }}{% else %}--{% endif %}{% endif %}</span>
+          </span>
+        </span>
       </div>
       <div class="metric-track voc-track">
         <div data-bar="gas" data-initial-width="{{ g_pct|float|round(1) }}" class="{% if is_v5 and not score_unavailable and (reading.voc_alert_latched or reading.voc_decision_state == 'alert') %}bar-bad{% elif is_v5 and not score_unavailable and reading.voc_decision_state == 'warning' %}bar-warn{% elif is_v5 and not score_unavailable %}bar-ok{% elif not is_v5 and has_data and reading.gas_bar_class %}{{ reading.gas_bar_class }}{% else %}bar-neutral{% endif %} metric-bar"></div>
