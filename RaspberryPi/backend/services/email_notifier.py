@@ -66,7 +66,8 @@ class EmailNotifier:
 
         recipients_raw = os.environ.get("EMAIL_RECIPIENTS")
         if recipients_raw is not None:
-            recipients = [part.strip() for part in recipients_raw.split(",") if part.strip()]
+            recipients = [part.strip()
+                          for part in recipients_raw.split(",") if part.strip()]
         else:
             recipients = [
                 str(item).strip()
@@ -81,7 +82,8 @@ class EmailNotifier:
             use_tls = bool(file_cfg.get("use_tls", True))
 
         try:
-            smtp_port = int(os.environ.get("EMAIL_SMTP_PORT", file_cfg.get("smtp_port", 587)))
+            smtp_port = int(os.environ.get("EMAIL_SMTP_PORT",
+                            file_cfg.get("smtp_port", 587)))
         except (TypeError, ValueError):
             smtp_port = 587
 
@@ -92,10 +94,12 @@ class EmailNotifier:
             "username": str(os.environ.get("EMAIL_USERNAME", file_cfg.get("username") or "")).strip(),
             "password": str(os.environ.get("EMAIL_PASSWORD", file_cfg.get("password") or "")).strip(),
             "from_address": str(
-                os.environ.get("EMAIL_FROM", file_cfg.get("from_address") or "")
+                os.environ.get("EMAIL_FROM", file_cfg.get(
+                    "from_address") or "")
             ).strip(),
             "from_name": str(
-                os.environ.get("EMAIL_FROM_NAME", file_cfg.get("from_name") or "SmartShelf")
+                os.environ.get("EMAIL_FROM_NAME", file_cfg.get(
+                    "from_name") or "SmartShelf")
             ).strip()
             or "SmartShelf",
             "recipients": recipients,
@@ -134,7 +138,8 @@ class EmailNotifier:
     ) -> EmailMessage:
         prev = previous_zone.upper()
         new = new_zone.upper()
-        prev_color = _ZONE_COLORS.get(previous_zone.lower(), _ZONE_COLORS["unknown"])
+        prev_color = _ZONE_COLORS.get(
+            previous_zone.lower(), _ZONE_COLORS["unknown"])
         new_color = _ZONE_COLORS.get(new_zone.lower(), _ZONE_COLORS["unknown"])
 
         plain = (
@@ -225,6 +230,102 @@ class EmailNotifier:
         msg.add_alternative(html, subtype="html")
         return msg
 
+    def _build_voc_message(
+        self,
+        *,
+        subject: str,
+        cell_label: str,
+        assignment: str,
+        severity: str,
+        score: int,
+        sigma: int,
+        sustain_minutes: float,
+        latch_text: str,
+    ) -> EmailMessage:
+        level = severity.upper()
+        sev_color = _ZONE_COLORS.get(
+            ("yellow" if severity.lower() == "warning" else "red") if severity.lower() in {
+                "warning", "alert", "critical"} else "unknown",
+            _ZONE_COLORS["unknown"],
+        )
+
+        plain = (
+            f"SmartShelf Autonomous VOC {level}\n"
+            f"{'=' * 40}\n\n"
+            f"Cell: {cell_label}\n"
+            f"Product / policy: {assignment}\n"
+            f"VOC change score: {score}\n"
+            f"Evidence: {sigma}-sigma threshold\n"
+            f"Sustained: {sustain_minutes:g}+ minutes\n\n"
+            f"{latch_text}\n"
+        )
+
+        html = f"""\
+<!DOCTYPE html>
+<html>
+    <body style="margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:#0f172a;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f5f9;padding:24px 12px;">
+            <tr>
+                <td align="center">
+                    <table role="presentation" width="560" cellspacing="0" cellpadding="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+                        <tr>
+                            <td style="background:#0f172a;padding:20px 24px;">
+                                <div style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;">SmartShelf</div>
+                                <div style="font-size:22px;font-weight:700;color:#ffffff;margin-top:4px;">VOC alert</div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:24px;">
+                                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:20px;">
+                                    <tr>
+                                        <td style="padding:12px 14px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+                                            <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;">Cell</div>
+                                            <div style="font-size:20px;font-weight:700;margin-top:2px;">{escape(cell_label)}</div>
+                                            <div style="font-size:14px;color:#475569;margin-top:4px;">{escape(assignment)}</div>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:20px;">
+                                    <tr>
+                                        <td width="48%" style="padding:12px 14px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;vertical-align:top;">
+                                            <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;">Severity</div>
+                                            <div style="font-size:16px;font-weight:700;margin-top:2px;color:{sev_color};">{escape(level)}</div>
+                                        </td>
+                                        <td width="4%"></td>
+                                        <td width="48%" style="padding:12px 14px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;vertical-align:top;">
+                                            <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;">VOC score</div>
+                                            <div style="font-size:16px;font-weight:600;margin-top:2px;">{score}</div>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <div style="text-align:center;padding:18px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;margin-bottom:16px;">
+                                    <div style="font-size:12px;color:#9a3412;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Evidence</div>
+                                    <div style="font-size:18px;font-weight:700;">{sigma}-sigma threshold</div>
+                                    <div style="font-size:13px;color:#78716c;margin-top:8px;">Sustained {escape(f"{sustain_minutes:g}")}+ minutes</div>
+                                </div>
+
+                                <p style="margin:0;font-size:13px;line-height:1.5;color:#64748b;">{escape(latch_text)}</p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+</html>
+"""
+
+        cfg = self._config
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = formataddr((cfg["from_name"], cfg["from_address"]))
+        msg["To"] = ", ".join(cfg["recipients"])
+        msg.set_content(plain)
+        msg.add_alternative(html, subtype="html")
+        return msg
+
     def _send_sync(self, message: EmailMessage) -> bool:
         cfg = self._config
         try:
@@ -305,30 +406,15 @@ class EmailNotifier:
                 "the configured warning-clear threshold for its full clear duration."
             )
         )
-        plain = (
-            f"SmartShelf Autonomous VOC {level}\n"
-            f"{'=' * 40}\n\n"
-            f"Cell: {cell_label}\n"
-            f"Product / policy: {assignment}\n"
-            f"VOC change score: {score}\n"
-            f"Evidence: {sigma}-sigma threshold\n"
-            f"Sustained: {sustain_minutes:g}+ minutes\n\n"
-            f"{latch_text}\n"
+        subject = f"SmartShelf VOC {level}: Cell {cell_label} — score {score}"
+        message = self._build_voc_message(
+            subject=subject,
+            cell_label=cell_label,
+            assignment=assignment,
+            severity=severity,
+            score=score,
+            sigma=sigma,
+            sustain_minutes=sustain_minutes,
+            latch_text=latch_text,
         )
-        html = (
-            "<html><body style=\"font-family:Segoe UI,Arial,sans-serif\">"
-            f"<h2>SmartShelf Autonomous VOC {escape(level)}</h2>"
-            f"<p><strong>Cell:</strong> {escape(cell_label)}<br>"
-            f"<strong>Product / policy:</strong> {escape(assignment)}<br>"
-            f"<strong>VOC change score:</strong> {score}<br>"
-            f"<strong>Evidence:</strong> {sigma}-sigma threshold sustained "
-            f"{sustain_minutes:g}+ minutes</p><p>{escape(latch_text)}</p></body></html>"
-        )
-        cfg = self._config
-        message = EmailMessage()
-        message["Subject"] = f"SmartShelf VOC {level}: Cell {cell_label} — score {score}"
-        message["From"] = formataddr((cfg["from_name"], cfg["from_address"]))
-        message["To"] = ", ".join(cfg["recipients"])
-        message.set_content(plain)
-        message.add_alternative(html, subtype="html")
         return await asyncio.to_thread(self._send_sync, message)
