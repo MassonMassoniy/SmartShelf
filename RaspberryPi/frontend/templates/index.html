@@ -2292,9 +2292,14 @@
           ${POLICY_SCORE_FIELDS.map(([key, label]) => {
             const enabled = !partial || Object.prototype.hasOwnProperty.call(policy, key);
             const raw = merged[key];
+            const disabledAttr = partial && !enabled ? "disabled" : "";
             return `<div class="policy-field">
               <div class="custom-field-label">${partial ? `<input type="checkbox" data-policy-enable="${key}" ${enabled ? "checked" : ""} aria-label="Override ${label}"> ` : ""}${label}</div>
-              <input type="number" inputmode="decimal" class="custom-input" style="width:100%" data-policy-key="${key}" data-policy-kind="score" min="0" max="100" value="${raw ?? ""}" ${partial && !enabled ? "disabled" : ""}>
+              <div class="stepper">
+                <button type="button" class="stepper-btn" data-policy-key="${key}" data-delta="-1" aria-label="Decrease ${label}" ${disabledAttr}>\u2212</button>
+                <input type="number" inputmode="decimal" class="custom-input" data-policy-key="${key}" data-policy-kind="score" min="0" max="100" value="${raw ?? ""}" ${disabledAttr}>
+                <button type="button" class="stepper-btn" data-policy-key="${key}" data-delta="1" aria-label="Increase ${label}" ${disabledAttr}>+</button>
+              </div>
             </div>`;
           }).join("")}
         </div>
@@ -2313,18 +2318,37 @@
       </div>`;
     }
 
+    function validatePolicyEditorTarget(target) {
+      if (profileDraft && target === profileDraft.voc_policy) {
+        const error = validateProfileDraft();
+        if (error) showModalError(error);
+        else modalErrorEl.classList.add("hidden");
+      } else {
+        validateCustomValues();
+      }
+    }
+
+    function setPolicyScore(container, target, key, value) {
+      const safeValue = Number.isFinite(value) ? value : Number(target[key] ?? 0);
+      const clamped = Math.max(0, Math.min(100, Math.round(safeValue)));
+      target[key] = clamped;
+      const input = container.querySelector(`input[data-policy-key="${key}"]`);
+      if (input) input.value = clamped;
+      validatePolicyEditorTarget(target);
+    }
+
     function bindPolicyEditor(container, target, partial, rerender) {
-      container.querySelectorAll("[data-policy-key]").forEach((input) => {
+      container.querySelectorAll("input[data-policy-key]").forEach((input) => {
         input.addEventListener("change", () => {
-          const value = Number(input.value);
-          if (Number.isFinite(value)) target[input.dataset.policyKey] = Math.round(value);
-          if (profileDraft && target === profileDraft.voc_policy) {
-            const error = validateProfileDraft();
-            if (error) showModalError(error);
-            else modalErrorEl.classList.add("hidden");
-          } else {
-            validateCustomValues();
-          }
+          setPolicyScore(container, target, input.dataset.policyKey, Number(input.value));
+        });
+      });
+      container.querySelectorAll("button.stepper-btn[data-policy-key]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (btn.disabled) return;
+          const key = btn.dataset.policyKey;
+          const current = Number(target[key] ?? container.querySelector(`input[data-policy-key="${key}"]`)?.value ?? 0);
+          setPolicyScore(container, target, key, current + Number(btn.dataset.delta));
         });
       });
       container.querySelectorAll("[data-policy-enable]").forEach((checkbox) => {
@@ -2390,14 +2414,13 @@
         });
       });
 
-      modalCustomViewEl.querySelectorAll(".stepper-btn").forEach((btn) => {
+      modalCustomViewEl.querySelectorAll(".stepper-btn[data-metric]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const { metric, field, delta } = btn.dataset;
           setCustomValue(metric, field, modalCustomValues[metric][field] + Number(delta));
         });
       });
-      modalCustomViewEl.querySelectorAll(".custom-input").forEach((input) => {
-        if (input.dataset.policyKey) return;
+      modalCustomViewEl.querySelectorAll(".custom-input[data-metric]").forEach((input) => {
         input.addEventListener("change", () => {
           const { metric, field } = input.dataset;
           setCustomValue(metric, field, Number(input.value));
