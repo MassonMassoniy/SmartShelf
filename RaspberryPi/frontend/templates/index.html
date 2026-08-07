@@ -389,6 +389,15 @@
     .metric-label {
       font-weight: 600;
       color: var(--ink-muted);
+      flex-shrink: 0;
+    }
+
+    .voc-caption {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.35rem;
+      min-width: 0;
+      flex: 1 1 auto;
     }
 
     .metric-value {
@@ -404,7 +413,8 @@
       justify-content: flex-end;
       gap: 0.35rem;
       min-width: 0;
-      max-width: 68%;
+      flex: 0 1 auto;
+      max-width: 58%;
     }
 
     .voc-score-group {
@@ -482,6 +492,7 @@
 
     .voc-track {
       overflow: visible;
+      margin-top: 0.28rem;
     }
 
     .voc-marker {
@@ -518,32 +529,22 @@
     .tile-status {
       display: flex;
       flex-direction: column;
-      gap: 0.4rem;
       flex-shrink: 0;
       margin-top: auto;
-      padding-top: 0.45rem;
-      border-top: 1px solid color-mix(in oklch, var(--line) 75%, transparent);
-    }
-
-    .tile-status:has(.evaluation-progress.hidden) {
-      gap: 0;
+      padding-top: 0;
     }
 
     .evaluation-progress {
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 1rem;
-      min-height: 1rem;
+      display: inline-flex;
+      align-items: baseline;
+      justify-content: flex-start;
+      min-width: 0;
+      max-width: 100%;
       overflow: hidden;
-      border: 1px solid var(--line);
-      border-radius: 0.3rem;
-      background: var(--surface-muted);
       color: var(--ink-muted);
-      font-size: 0.58rem;
-      line-height: 1;
-      text-align: center;
+      font-size: 0.92em;
+      line-height: 1.2;
+      text-align: left;
       font-variant-numeric: tabular-nums;
     }
 
@@ -552,20 +553,27 @@
     }
 
     .evaluation-progress > span {
-      position: absolute;
-      inset: 0 auto 0 0;
-      background: var(--accent-soft);
+      display: none;
     }
 
-    .evaluation-progress.is-warning > span { background: var(--warn-soft); }
-    .evaluation-progress.is-alert > span,
-    .evaluation-progress.is-critical > span { background: var(--bad-soft); }
+    .evaluation-progress.is-warning { color: var(--warn-ink); }
+    .evaluation-progress.is-alert,
+    .evaluation-progress.is-critical { color: var(--bad-ink); }
 
     .evaluation-progress > b {
-      position: relative;
-      z-index: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       font-weight: 700;
       letter-spacing: 0.01em;
+    }
+
+    .evaluation-progress:not(.hidden)::before {
+      content: "·";
+      margin-right: 0.28rem;
+      font-weight: 600;
+      color: var(--ink-faint);
     }
 
     /* Zone fill: vivid green / yellow / red (matches config.json bands) */
@@ -583,7 +591,8 @@
       min-width: 0;
       width: 100%;
       margin: 0;
-      padding: 0;
+      padding-top: 0.4rem;
+      border-top: 1px solid color-mix(in oklch, var(--line) 75%, transparent);
       line-height: 1.2;
       font-size: 0.68rem;
       font-weight: 500;
@@ -650,14 +659,12 @@
 
       .tile-status {
         margin-top: auto;
-        gap: 0.45rem;
-        padding-top: 0.5rem;
       }
 
       .tile-foot {
         flex-shrink: 0;
         margin-top: 0;
-        padding-top: 0;
+        padding-top: 0.45rem;
         font-size: 0.75rem;
         line-height: 1.4;
         gap: 0.5rem;
@@ -1067,12 +1074,16 @@
 
     .custom-fields {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
       gap: 0.75rem 1rem;
     }
 
     .custom-fields > * {
       min-width: 0;
+    }
+
+    .policy-fields {
+      grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
     }
 
     .custom-field-label {
@@ -1090,23 +1101,25 @@
       align-items: center;
       justify-content: stretch;
       width: 100%;
+      max-width: 100%;
       gap: 0.3rem;
+      min-width: 0;
     }
 
     .stepper-btn {
       display: grid;
       place-items: center;
-      width: 2.75rem;
-      height: 2.75rem;
-      min-width: 2.75rem;
-      min-height: 2.75rem;
-      flex-shrink: 0;
+      width: 2.5rem;
+      height: 2.5rem;
+      min-width: 2.5rem;
+      min-height: 2.5rem;
+      flex: 0 0 2.5rem;
       border: 1.5px solid var(--line);
       border-radius: 0.45rem;
       background: var(--surface);
       color: var(--accent-strong);
       font: inherit;
-      font-size: 1.25rem;
+      font-size: 1.2rem;
       font-weight: 700;
       cursor: pointer;
     }
@@ -1119,9 +1132,9 @@
     .custom-input {
       flex: 1 1 0;
       width: 0;
-      min-width: 3rem;
-      height: 2.75rem;
-      min-height: 2.75rem;
+      min-width: 2.75rem;
+      height: 2.5rem;
+      min-height: 2.5rem;
       border: 1.5px solid var(--line);
       border-radius: 0.45rem;
       background: var(--surface);
@@ -1192,16 +1205,18 @@
     }
 
     @media (min-width: 900px) {
-      .custom-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .custom-fields { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
+      .policy-fields { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
       .stepper-btn {
-        width: 2.85rem;
-        height: 2.85rem;
-        min-width: 2.85rem;
-        min-height: 2.85rem;
+        width: 2.65rem;
+        height: 2.65rem;
+        min-width: 2.65rem;
+        min-height: 2.65rem;
+        flex-basis: 2.65rem;
       }
       .custom-input {
-        height: 2.85rem;
-        min-height: 2.85rem;
+        height: 2.65rem;
+        min-height: 2.65rem;
       }
     }
 
@@ -1272,14 +1287,11 @@
         margin-top: 0.22rem;
         font-size: 0.62rem;
       }
-      .tile-status {
-        gap: 0.38rem;
-        padding-top: 0.42rem;
-      }
       .evaluation-progress {
-        height: 1rem;
-        min-height: 1rem;
-        font-size: 0.56rem;
+        font-size: 0.9em;
+      }
+      .tile-foot {
+        padding-top: 0.38rem;
       }
 
       .chart-panel {
@@ -1469,7 +1481,7 @@
 
       .metric-value--voc {
         gap: 0.22rem;
-        max-width: 72%;
+        max-width: 48%;
       }
 
       .voc-index-group {
@@ -1490,21 +1502,24 @@
         line-height: 1.1;
       }
 
-      .tile-status {
+      .voc-caption {
         gap: 0.22rem;
-        padding-top: 0.22rem;
       }
 
       .evaluation-progress {
-        height: 0.7rem;
-        min-height: 0.7rem;
-        font-size: 0.48rem;
+        font-size: 0.88em;
+        line-height: 1.1;
+      }
+
+      .evaluation-progress:not(.hidden)::before {
+        margin-right: 0.18rem;
       }
 
       .voc-marker::after { display: none; }
 
       .tile-foot {
         flex-shrink: 0;
+        padding-top: 0.22rem;
         font-size: 0.58rem;
         line-height: 1.1;
         gap: 0.35rem;
@@ -2332,7 +2347,7 @@
     function policyEditorHtml(policy, partial = false, base = {}) {
       const merged = { ...base, ...policy };
       return `
-        <div class="custom-fields">
+        <div class="custom-fields policy-fields">
           ${POLICY_SCORE_FIELDS.map(([key, label]) => {
             const enabled = !partial || Object.prototype.hasOwnProperty.call(policy, key);
             const raw = merged[key];

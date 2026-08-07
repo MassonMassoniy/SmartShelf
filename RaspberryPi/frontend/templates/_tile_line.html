@@ -99,8 +99,16 @@
     {% if g_pct < 0 %}{% set g_pct = 0 %}{% endif %}
     {% if g_pct > 100 %}{% set g_pct = 100 %}{% endif %}
     <div class="metric-row">
-      <div class="metric-label-row">
-        <span class="metric-label" data-field="voc-label" data-short-label="VOC">{% if is_v5 %}VOC change{% else %}VOC index{% endif %}</span>
+      <div class="metric-label-row metric-label-row--voc">
+        <span class="voc-caption">
+          <span class="metric-label" data-field="voc-label" data-short-label="VOC">{% if is_v5 %}VOC change{% else %}VOC index{% endif %}</span>
+          {% set _eval = reading.evaluation_state or reading.voc_decision_state or "" %}
+          {% set _show_timer = is_v5 and (_eval and _eval != "monitoring") %}
+          <span class="evaluation-progress{% if not _show_timer %} hidden{% endif %}{% if 'critical' in (_eval|string) %} is-critical{% elif 'alert' in (_eval|string) %} is-alert{% elif 'warning' in (_eval|string) %} is-warning{% endif %}" data-field="evaluation-progress" role="progressbar" aria-label="VOC alert timer" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ ((reading.progress or 0) * 100)|round|int if _show_timer else 0 }}">
+            <span data-field="evaluation-progress-bar" style="width:{{ ((reading.progress or 0) * 100)|round(1) if _show_timer else 0 }}%"></span>
+            <b data-field="evaluation-progress-text">{% if _show_timer and reading.active_timer %}{{ {"warning_pending":"Warning timer","warning":"Warning","warning_clear_pending":"Clearing warning","alert_pending":"Alert timer","alert":"Alert","critical_pending":"Critical timer","critical":"Critical"}.get(_eval, _eval|replace("_"," ")) }} · {{ ((reading.elapsed_seconds or 0) / 60)|round(1) }}/{{ ((reading.required_seconds or 0) / 60)|round(1) }} min{% elif _show_timer %}{{ {"warning":"Warning active","alert":"Alert active","critical":"Critical active"}.get(_eval, _eval|replace("_"," ")) }}{% endif %}</b>
+          </span>
+        </span>
         <span class="metric-value metric-value--voc">
           <span class="voc-score-group">
             <span data-field="gas">{% if is_v5 %}{% if not score_unavailable %}{{ reading.voc_change_score }}{% else %}--{% endif %}{% elif has_data and reading.gas is not none %}{{ reading.gas }}{% else %}--{% endif %}</span><span data-field="voc-score-unit">{% if is_v5 %} / 100{% endif %}</span>
@@ -176,12 +184,6 @@
   </div>
 
   <div class="tile-status">
-    {% set _eval = reading.evaluation_state or reading.voc_decision_state or "" %}
-    {% set _show_timer = is_v5 and (_eval and _eval != "monitoring") %}
-    <div class="evaluation-progress{% if not _show_timer %} hidden{% endif %}{% if 'critical' in (_eval|string) %} is-critical{% elif 'alert' in (_eval|string) %} is-alert{% elif 'warning' in (_eval|string) %} is-warning{% endif %}" data-field="evaluation-progress" role="progressbar" aria-label="VOC alert timer" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ ((reading.progress or 0) * 100)|round|int if _show_timer else 0 }}">
-      <span data-field="evaluation-progress-bar" style="width:{{ ((reading.progress or 0) * 100)|round(1) if _show_timer else 0 }}%"></span>
-      <b data-field="evaluation-progress-text">{% if _show_timer and reading.active_timer %}{{ {"warning_pending":"Warning timer","warning":"Warning","warning_clear_pending":"Clearing warning","alert_pending":"Alert timer","alert":"Alert","critical_pending":"Critical timer","critical":"Critical"}.get(_eval, _eval|replace("_"," ")) }} · {{ ((reading.elapsed_seconds or 0) / 60)|round(1) }}/{{ ((reading.required_seconds or 0) / 60)|round(1) }} min{% elif _show_timer %}{{ {"warning":"Warning active","alert":"Alert active","critical":"Critical active"}.get(_eval, _eval|replace("_"," ")) }}{% endif %}</b>
-    </div>
     <footer class="tile-foot">
       <span>Updated</span>
       <span data-field="updated">{{reading.ts if has_data else "No data"}}</span>
