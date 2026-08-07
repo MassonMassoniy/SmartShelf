@@ -9,6 +9,7 @@ import smtplib
 from email.message import EmailMessage
 from email.utils import formataddr
 from html import escape
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
 _DEFAULT_CONFIG_PATH = _BACKEND_DIR / "config" / "email_config.json"
 _DEFAULT_EXAMPLE_PATH = _BACKEND_DIR / "config" / "email_config.example.json"
+_DEFAULT_DASHBOARD_URL = "https://smartshelf.tailf41913.ts.net/"
 
 REQUEST_TIMEOUT_SECONDS = 15
 
@@ -48,6 +50,8 @@ class EmailNotifier:
         self._example_path = Path(example_path)
         self._warned_unconfigured = False
         self._config = self._load_config()
+        raw_url = os.environ.get("SMARTSHELF_DASHBOARD_URL", _DEFAULT_DASHBOARD_URL)
+        self._dashboard_url = (raw_url or _DEFAULT_DASHBOARD_URL).strip() or _DEFAULT_DASHBOARD_URL
 
     def _load_config(self) -> dict[str, Any]:
         if not self._config_path.exists() and self._example_path.exists():
@@ -141,6 +145,7 @@ class EmailNotifier:
         prev_color = _ZONE_COLORS.get(
             previous_zone.lower(), _ZONE_COLORS["unknown"])
         new_color = _ZONE_COLORS.get(new_zone.lower(), _ZONE_COLORS["unknown"])
+        now_str = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
         plain = (
             f"SmartShelf Alert\n"
@@ -151,8 +156,10 @@ class EmailNotifier:
             f"Zone change: {prev} -> {new}\n"
             f"Sustained: {sustain_minutes:g}+ minutes\n"
             f"Current reading: {value_str}\n\n"
+            f"Time: {now_str}\n"
             f"This alert was sent because the reading stayed in a worse zone "
-            f"continuously past the sustain threshold.\n"
+            f"continuously past the sustain threshold.\n\n"
+            f"Open dashboard: {self._dashboard_url}\n"
         )
 
         html = f"""\
@@ -167,6 +174,7 @@ class EmailNotifier:
               <td style="background:#0f172a;padding:20px 24px;">
                 <div style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;">SmartShelf</div>
                 <div style="font-size:22px;font-weight:700;color:#ffffff;margin-top:4px;">Shelf condition alert</div>
+                                <div style="font-size:12px;color:#cbd5e1;margin-top:6px;">Occurred at {escape(now_str)}</div>
               </td>
             </tr>
             <tr>
@@ -211,6 +219,10 @@ class EmailNotifier:
                   This alert fires once when a metric stays in a worse zone
                   (green&rarr;yellow or yellow&rarr;red) past the sustain threshold.
                 </p>
+                                <div style="text-align:center;margin-top:16px;">
+                                    <a href="{escape(self._dashboard_url)}" style="display:inline-block;background:#0ea5e9;color:#ffffff;text-decoration:none;font-weight:600;padding:10px 14px;border-radius:8px;border:1px solid #0284c7">Open Dashboard</a>
+                                    <div style="font-size:12px;color:#94a3b8;margin-top:8px;">{escape(self._dashboard_url)}</div>
+                                </div>
               </td>
             </tr>
           </table>
@@ -248,6 +260,7 @@ class EmailNotifier:
                 "warning", "alert", "critical"} else "unknown",
             _ZONE_COLORS["unknown"],
         )
+        now_str = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
         plain = (
             f"SmartShelf Autonomous VOC {level}\n"
@@ -257,7 +270,9 @@ class EmailNotifier:
             f"VOC change score: {score}\n"
             f"Evidence: {sigma}-sigma threshold\n"
             f"Sustained: {sustain_minutes:g}+ minutes\n\n"
-            f"{latch_text}\n"
+            f"Time: {now_str}\n"
+            f"{latch_text}\n\n"
+            f"Open dashboard: {self._dashboard_url}\n"
         )
 
         html = f"""\
@@ -272,6 +287,7 @@ class EmailNotifier:
                             <td style="background:#0f172a;padding:20px 24px;">
                                 <div style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;">SmartShelf</div>
                                 <div style="font-size:22px;font-weight:700;color:#ffffff;margin-top:4px;">VOC alert</div>
+                                <div style="font-size:12px;color:#cbd5e1;margin-top:6px;">Occurred at {escape(now_str)}</div>
                             </td>
                         </tr>
                         <tr>
@@ -307,6 +323,10 @@ class EmailNotifier:
                                 </div>
 
                                 <p style="margin:0;font-size:13px;line-height:1.5;color:#64748b;">{escape(latch_text)}</p>
+                                <div style="text-align:center;margin-top:16px;">
+                                    <a href="{escape(self._dashboard_url)}" style="display:inline-block;background:#0ea5e9;color:#ffffff;text-decoration:none;font-weight:600;padding:10px 14px;border-radius:8px;border:1px solid #0284c7">Open Dashboard</a>
+                                    <div style="font-size:12px;color:#94a3b8;margin-top:8px;">{escape(self._dashboard_url)}</div>
+                                </div>
                             </td>
                         </tr>
                     </table>
