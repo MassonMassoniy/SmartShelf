@@ -103,7 +103,7 @@ python -m RaspberryPi.backend.monitor_esp_ble
 - `GET|POST /api/product-profiles` - list or create persisted product profiles.
 - `GET|PUT|DELETE /api/product-profiles/<profile_id>` - read, update, or safely delete a profile. Delete returns `409` while linked/override cells reference it.
 - `GET /api/cells/config` - current trigger bounds/category assignment for every cell.
-- `PUT /api/cells/<node_id>/config` - assign `linked`, `copied`, `override`, or `custom` settings. Profile modes use `profile_id`; override also accepts a partial `voc_policy_override`. Legacy category/custom requests remain supported.
+- `PUT /api/cells/<node_id>/config` - assign `linked`, `override`, or `custom` settings. Profile modes use `profile_id`; override also accepts a partial `voc_policy_override`. Legacy category/custom requests remain supported.
 - `GET /api/voc-alerts` - durable autonomous VOC alert-latch state.
 
 ## Trigger System & Email Alerts
@@ -193,8 +193,8 @@ and critical scores. Each severity uses a fixed 30-minute continuous duration,
 fixed evidence gates (warning 6σ, alert/critical 10σ), and an internal warning
 clear hysteresis (default clear score 20 for 5 minutes). Critical is always
 enabled. Product profiles are persisted in SQLite. Linked cells follow profile
-edits, copied cells retain an immutable snapshot, override cells merge a
-partial score patch over a linked profile, and custom cells remain independent.
+edits, override cells merge a partial score patch over a linked profile, and
+custom cells remain independent.
 Profiles store temperature and humidity zone bounds plus `voc_policy` only;
 VOC Index zone bands are no longer part of product profiles.
 

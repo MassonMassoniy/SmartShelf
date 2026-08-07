@@ -172,7 +172,7 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
         body = request.get_json(silent=True) or {}
         mode = body.get("assignment_mode") or body.get("mode")
         try:
-            if mode in {"linked", "copied", "override"}:
+            if mode in {"linked", "override"}:
                 profile_id = body.get("profile_id")
                 if not profile_id:
                     return jsonify({"detail": "profile_id is required for profile assignment"}), 422
@@ -202,7 +202,7 @@ def create_api(service: BackendService, app: Flask, lifespan=None) -> Flask:
                 return jsonify(
                     {
                         "detail": (
-                            "assignment_mode must be linked, copied, override, or custom; "
+                            "assignment_mode must be linked, override, or custom; "
                             "legacy category/custom and voc_policy-only requests remain supported"
                         )
                     }

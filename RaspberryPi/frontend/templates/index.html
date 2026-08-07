@@ -1959,7 +1959,6 @@
       if (!name) return mode === "custom" ? "Custom" : "Unassigned";
       const modeLabel = {
         linked: "profile defaults",
-        copied: "copied snapshot",
         override: "cell override",
       }[mode] || source || mode || "profile";
       return `${name} · ${modeLabel}`;
@@ -2163,22 +2162,18 @@
           : 'No profiles available. Open “Profiles” to create one.';
         return;
       }
-      if (!["linked", "copied", "override"].includes(modalAssignmentMode)) {
+      if (!["linked", "override"].includes(modalAssignmentMode)) {
         modalAssignmentMode = "linked";
       }
       const usesDefaults = modalAssignmentMode !== "override";
       modalCategoryInfoEl.classList.remove("hidden");
       modalCategoryInfoEl.innerHTML = `
         <div class="modal-kicker">Assignment behavior</div>
-        <div class="assignment-options">
-          <label class="assignment-option"><input type="radio" name="assignment-mode" value="linked" ${modalAssignmentMode !== "copied" ? "checked" : ""}> Linked shared profile</label>
-          <label class="assignment-option"><input type="radio" name="assignment-mode" value="copied" ${modalAssignmentMode === "copied" ? "checked" : ""}> Copied independent snapshot</label>
-        </div>
-        <label class="toggle-row" ${modalAssignmentMode === "copied" ? 'style="display:none"' : ""}>
+        <p class="policy-note">This cell uses the shared live profile. Edits to the profile apply here automatically.</p>
+        <label class="toggle-row">
           <span>Use profile defaults: <strong>${usesDefaults ? "Yes" : "No"}</strong></span>
           <input id="profile-defaults-toggle" type="checkbox" ${usesDefaults ? "checked" : ""} aria-label="Use profile VOC defaults">
         </label>
-        <p class="policy-note">Source: shared ${modalAssignmentMode === "copied" ? "snapshot" : "live profile"} · Effective policy shown below.</p>
         ${modalAssignmentMode === "override"
           ? `<div class="custom-metric-block" style="margin-top:.65rem">
               <div class="custom-metric-title">Per-cell VOC override</div>
@@ -2187,13 +2182,6 @@
             </div>`
           : policySummaryHtml(profile.voc_policy)}
       `;
-      modalCategoryInfoEl.querySelectorAll('input[name="assignment-mode"]').forEach((radio) => {
-        radio.addEventListener("change", () => {
-          modalAssignmentMode = radio.value === "copied" ? "copied" : "linked";
-          renderCategoryInfo();
-          validateCustomValues();
-        });
-      });
       const defaultsToggle = document.getElementById("profile-defaults-toggle");
       if (defaultsToggle) {
         defaultsToggle.addEventListener("change", () => {
@@ -2264,7 +2252,7 @@
       ["alert_score", "Alert score"],
       ["critical_score", "Critical score"],
     ];
-    const FIXED_VOC_DURATION_SECONDS = 30 * 60;
+    const FIXED_VOC_DURATION_SECONDS = 1;
 
     function normalizeVocPolicyScores(policy = {}) {
       const warning = Math.round(Number(policy.warning_score ?? 25));
@@ -2512,7 +2500,7 @@
       modalSelectedProfileId = cfg.profile_id || productProfiles[0]?.profile_id || null;
       // Assignment-tab modes are profile-based only. Custom cells start as linked
       // so saving from Assignment cannot accidentally POST assignment_mode=custom.
-      modalAssignmentMode = ["linked", "copied", "override"].includes(cfg.assignment_mode)
+      modalAssignmentMode = ["linked", "override"].includes(cfg.assignment_mode)
         ? cfg.assignment_mode
         : "linked";
       modalVocOverride = { ...(cfg.voc_policy_override || {}) };
@@ -2556,7 +2544,7 @@
       if (modalMode === "category") {
         if (modalIsV5) {
           if (!modalSelectedProfileId) return;
-          const assignmentMode = ["linked", "copied", "override"].includes(modalAssignmentMode)
+          const assignmentMode = ["linked", "override"].includes(modalAssignmentMode)
             ? modalAssignmentMode
             : "linked";
           body = {

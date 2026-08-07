@@ -70,12 +70,11 @@ class ProductProfileTests(unittest.TestCase):
         self.assertEqual(len(reloaded.list_profiles()), 1)
         self.assertEqual(reloaded.get_cell_config(3073)["assignment_mode"], "linked")
 
-    def test_link_propagates_copy_is_immutable_and_override_merges(self):
+    def test_link_propagates_and_override_merges(self):
         profile = self.store.create_profile(
             {"profile_id": "produce", "name": "Produce", **deepcopy(BOUNDS)}
         )
         self.store.set_assignment(3073, "linked", profile_id=profile["profile_id"])
-        self.store.set_assignment(3077, "copied", profile_id=profile["profile_id"])
         self.store.set_assignment(
             3165,
             "override",
@@ -88,16 +87,21 @@ class ProductProfileTests(unittest.TestCase):
             {"voc_policy": {"warning_score": 28, "warning_clear_score": 21, "alert_score": 60}},
         )
         linked = self.store.get_cell_config(3073)
-        copied = self.store.get_cell_config(3077)
         overridden = self.store.get_cell_config(3165)
         self.assertEqual(linked["voc_policy"]["warning_score"], 28)
-        self.assertEqual(copied["voc_policy"]["warning_score"], 25)
         self.assertEqual(overridden["voc_policy"]["warning_score"], 30)
         self.assertEqual(overridden["voc_policy"]["alert_score"], 60)
 
         persisted = self.storage.load_cell_configs()
         self.assertEqual(persisted[3073]["voc_policy"]["warning_score"], 28)
         self.assertEqual(persisted[3165]["voc_policy_override"]["warning_score"], 30)
+
+    def test_copied_assignment_is_rejected(self):
+        profile = self.store.create_profile(
+            {"profile_id": "produce", "name": "Produce", **deepcopy(BOUNDS)}
+        )
+        with self.assertRaises(CellConfigError):
+            self.store.set_assignment(3073, "copied", profile_id=profile["profile_id"])
 
     def test_profiles_omit_voc_index_bounds(self):
         profile = self.store.create_profile(
@@ -110,17 +114,34 @@ class ProductProfileTests(unittest.TestCase):
         listed = self.store.list_profiles()
         self.assertTrue(all("gas" not in item for item in listed))
 
-    def test_delete_rejects_live_reference_but_allows_snapshot(self):
+    def test_delete_rejects_live_reference_but_allows_after_custom(self):
         profile = self.store.create_profile(
-            {"profile_id": "copy-source", "name": "Copy", **deepcopy(BOUNDS)}
+            {"profile_id": "link-source", "name": "Link", **deepcopy(BOUNDS)}
         )
         self.store.set_assignment(3073, "linked", profile_id=profile["profile_id"])
         with self.assertRaises(CellConfigError):
             self.store.delete_profile(profile["profile_id"])
-        self.store.set_assignment(3073, "copied", profile_id=profile["profile_id"])
+        self.store.set_assignment(
+            3073,
+            "custom",
+            custom_bounds={
+                "temperature": {
+                    "yellow_low": -20,
+                    "green_low": 1,
+                    "green_high": 4,
+                    "yellow_high": 8,
+                },
+                "humidity": {
+                    "yellow_low": 70,
+                    "green_low": 80,
+                    "green_high": 90,
+                    "yellow_high": 95,
+                },
+            },
+        )
         self.store.delete_profile(profile["profile_id"])
         self.assertIsNone(self.store.get_profile(profile["profile_id"]))
-        self.assertEqual(self.store.get_cell_config(3073)["profile_source"], "snapshot")
+        self.assertEqual(self.store.get_cell_config(3073)["profile_source"], "custom")
 
 
 if __name__ == "__main__":

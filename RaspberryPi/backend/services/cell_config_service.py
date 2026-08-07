@@ -16,7 +16,7 @@ METRICS = ("temperature", "humidity", "gas")
 # inert default gas band only for legacy storage / non-v5 paths.
 PROFILE_METRICS = ("temperature", "humidity")
 ZONES = ("green", "yellow", "red")
-VOC_SCORE_DURATION_SECONDS = 30 * 60
+VOC_SCORE_DURATION_SECONDS = 1
 DEFAULT_VOC_POLICY = {
     "warning_score": 25,
     "warning_sigma": 6,
@@ -295,7 +295,6 @@ class CellConfigStore:
                 or ("linked" if entry.get("mode") == "category" else "custom")
             ),
             "profile_id": entry.get("profile_id") or entry.get("category_id"),
-            "profile_snapshot": entry.get("profile_snapshot"),
             "voc_policy_override": entry.get("voc_policy_override"),
         }
 
@@ -307,10 +306,19 @@ class CellConfigStore:
             "voc_policy": dict(DEFAULT_VOC_POLICY),
             "assignment_mode": "custom",
             "profile_id": None,
-            "profile_snapshot": None,
             "voc_policy_override": None,
             **_default_canonical_bounds(),
         }
+
+    @staticmethod
+    def _detach_copied_snapshot(entry: dict[str, Any]) -> None:
+        """Migrate retired copied-snapshot assignments to independent custom cells."""
+        entry["assignment_mode"] = "custom"
+        entry["mode"] = "custom"
+        entry["profile_id"] = None
+        entry["category_id"] = None
+        entry["voc_policy_override"] = None
+        entry.pop("profile_snapshot", None)
 
     def _load_cells(self) -> None:
         stored = self._storage.load_cell_configs()
@@ -322,9 +330,16 @@ class CellConfigStore:
             if node_id in stored:
                 cells[node_id] = stored[node_id]
                 mode = cells[node_id].get("assignment_mode")
-                if mode not in {"linked", "copied", "override", "custom"}:
+                if mode == "copied":
+                    self._detach_copied_snapshot(cells[node_id])
+                    mode = "custom"
+                    dirty = True
+                if mode not in {"linked", "override", "custom"}:
                     mode = "linked" if cells[node_id].get("mode") == "category" else "custom"
                     cells[node_id]["assignment_mode"] = mode
+                    dirty = True
+                if cells[node_id].get("profile_snapshot") is not None:
+                    cells[node_id]["profile_snapshot"] = None
                     dirty = True
                 if mode in {"linked", "override"} and not cells[node_id].get("profile_id"):
                     category_id = cells[node_id].get("category_id")
@@ -366,8 +381,10 @@ class CellConfigStore:
                 entry.get("assignment_mode")
                 or ("linked" if entry.get("mode") == "category" else "custom")
             )
+            if entry["assignment_mode"] == "copied":
+                self._detach_copied_snapshot(entry)
             entry["profile_id"] = entry.get("profile_id") or entry.get("category_id")
-            entry["profile_snapshot"] = entry.get("profile_snapshot")
+            entry["profile_snapshot"] = None
             entry["voc_policy_override"] = entry.get("voc_policy_override")
             entry["voc_policy"] = _validate_voc_policy(entry.get("voc_policy"))
             if entry["assignment_mode"] in {"linked", "override"}:
@@ -468,15 +485,10 @@ class CellConfigStore:
             "category_id": entry["category_id"],
             "category_name": category["name"] if category else None,
             "profile_id": entry.get("profile_id"),
-            "profile_name": profile.get("name") if profile else (
-                (entry.get("profile_snapshot") or {}).get("name")
-            ),
+            "profile_name": profile.get("name") if profile else None,
             "profile_source": (
-                "live" if assignment_mode in {"linked", "override"}
-                else "snapshot" if assignment_mode == "copied"
-                else "custom"
+                "live" if assignment_mode in {"linked", "override"} else "custom"
             ),
-            "profile_snapshot": deepcopy(entry.get("profile_snapshot")),
             "voc_policy_override": deepcopy(entry.get("voc_policy_override")),
             "bounds": bounds,
             "simple_bounds": simple_bounds,
@@ -590,9 +602,9 @@ class CellConfigStore:
             self._ensure_loaded()
             if node_id not in self._cells:
                 raise CellConfigError(f"Unknown cell node_id {node_id}")
-            if assignment_mode not in {"linked", "copied", "override", "custom"}:
+            if assignment_mode not in {"linked", "override", "custom"}:
                 raise CellConfigError(
-                    "assignment_mode must be linked, copied, override, or custom"
+                    "assignment_mode must be linked, override, or custom"
                 )
             entry = self._cells[node_id]
             if assignment_mode == "custom":
@@ -629,28 +641,11 @@ class CellConfigStore:
                     profile_snapshot=None,
                     voc_policy_override=None,
                 )
-                if assignment_mode == "copied":
-                    defaults = _default_canonical_bounds()
-                    snapshot = {
-                        "profile_id": profile["profile_id"],
-                        "name": profile["name"],
-                        "voc_policy": deepcopy(profile["voc_policy"]),
-                        **{
-                            metric: deepcopy(profile[metric])
-                            for metric in PROFILE_METRICS
-                        },
-                        "gas": deepcopy(profile.get("gas") or defaults["gas"]),
-                    }
-                    entry["profile_snapshot"] = snapshot
-                    for metric in METRICS:
-                        entry[metric] = deepcopy(snapshot[metric])
-                    entry["voc_policy"] = deepcopy(snapshot["voc_policy"])
-                else:
-                    if assignment_mode == "override":
-                        entry["voc_policy_override"] = _validate_voc_override(
-                            voc_policy_override, profile["voc_policy"]
-                        )
-                    self._apply_effective_profile(entry, profile)
+                if assignment_mode == "override":
+                    entry["voc_policy_override"] = _validate_voc_override(
+                        voc_policy_override, profile["voc_policy"]
+                    )
+                self._apply_effective_profile(entry, profile)
             self._save_node(node_id)
             return self._cell_config_locked(node_id)
 
