@@ -71,6 +71,28 @@ class ProtocolDecoderTests(unittest.TestCase):
         self.assertIsNone(packet.voc_change_score)
         self.assertFalse(packet.measurement_usable)
 
+    def test_high_humidity_warning_keeps_measurement_usable(self):
+        # Flag bit 0x10 reports high humidity; monitoring + score remain usable.
+        payload = struct.pack(
+            "<BHBhHHhBBH",
+            5,
+            3073,
+            0x1F,  # sht + prox + sgp + baseline + environment warning
+            2345,
+            9200,
+            321,
+            112,
+            51,
+            5,
+            42,
+        )
+        packet = decode_payload(payload)
+
+        self.assertTrue(packet.environment_fault)
+        self.assertEqual(packet.voc_change_score, 51)
+        self.assertEqual(packet.autonomous_state, 5)
+        self.assertTrue(packet.measurement_usable)
+
     def test_occupancy_uses_proximity_regardless_of_lifecycle(self):
         stabilizing_empty = with_cell_occupancy(
             {"protocol_version": 5, "autonomous_state": 1, "proximity": 5}

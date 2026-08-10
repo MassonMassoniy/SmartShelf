@@ -1808,7 +1808,7 @@
       3: "Product settling",
       4: "Baselining",
       5: "Monitoring",
-      8: "Humidity fault",
+      8: "Warning: High Humidity",
     };
 
     const evaluationLabels = {
@@ -1829,8 +1829,7 @@
       return `${minutes}:${String(secs).padStart(2, "0")}`;
     }
 
-    function describeScoreDetail(node, environmentFault, measurementUsable) {
-      if (environmentFault) return "Score paused";
+    function describeScoreDetail(node, measurementUsable) {
       if (!node.baseline_valid) return "Waiting for baseline";
       if (!measurementUsable) return "Score not ready";
       return "Score live";
@@ -1855,10 +1854,16 @@
       const concurrentRem = Number(node.concurrent_remaining_sec);
       const occupied = isCellOccupied(node);
 
+      if (environmentFault || state === 8) {
+        return {
+          phase: "Warning: High Humidity",
+          detail: describeScoreDetail(node, measurementUsable),
+        };
+      }
       if (state === 5) {
         return {
           phase: "Monitoring",
-          detail: describeScoreDetail(node, environmentFault, measurementUsable),
+          detail: describeScoreDetail(node, measurementUsable),
         };
       }
       if (state === 4) {
@@ -1884,15 +1889,12 @@
       if (state === 2) {
         return {
           phase: "Shelf empty",
-          detail: describeScoreDetail(node, environmentFault, measurementUsable),
+          detail: describeScoreDetail(node, measurementUsable),
         };
-      }
-      if (state === 8 || environmentFault) {
-        return { phase: "Humidity fault", detail: "Score paused" };
       }
       return {
         phase: sensorPhaseLabels[state] || "Sensor unavailable",
-        detail: describeScoreDetail(node, environmentFault, measurementUsable),
+        detail: describeScoreDetail(node, measurementUsable),
       };
     }
 
@@ -1952,7 +1954,7 @@
       indexGroupEl?.classList.remove("hidden");
       setTextIfChanged(indexEl, vocIndex == null ? "--" : String(vocIndex));
       const environmentFault = Boolean(node.environment_fault) || Number(node.autonomous_state) === 8;
-      const measurementUsable = Boolean(node.measurement_usable) && !environmentFault;
+      const measurementUsable = Boolean(node.measurement_usable);
       const score = !measurementUsable || node.voc_change_score == null ? null : Number(node.voc_change_score);
       const scoreAvailable = score != null && Number.isFinite(score);
       setTextIfChanged(valueEl, scoreAvailable ? String(score) : "--");

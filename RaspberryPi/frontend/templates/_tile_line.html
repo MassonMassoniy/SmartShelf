@@ -88,7 +88,7 @@
       </div>
     </div>
 
-    {% set score_unavailable = not has_data or not is_v5 or reading.voc_change_score is none or reading.environment_fault or not reading.measurement_usable %}
+    {% set score_unavailable = not has_data or not is_v5 or reading.voc_change_score is none or not reading.measurement_usable %}
     {% if is_v5 and not score_unavailable %}
       {% set g_pct = reading.voc_change_score %}
     {% elif not is_v5 and has_data and reading.gas is not none %}
@@ -133,11 +133,18 @@
           {% set _concurrent = reading.concurrent_state if reading else none %}
           {% set _crem = reading.concurrent_remaining_sec if reading else none %}
           {% set _occupied = reading.cell_status == 'full' or (reading.cell_empty == false and reading.cell_status != 'empty') %}
-          {% if _state == 5 %}
+          {% if reading.environment_fault or _state == 8 %}
+            {% set _phase = "Warning: High Humidity" %}
+            {% if not reading.baseline_valid %}
+              {% set _detail = "Waiting for baseline" %}
+            {% elif not reading.measurement_usable %}
+              {% set _detail = "Score not ready" %}
+            {% else %}
+              {% set _detail = "Score live" %}
+            {% endif %}
+          {% elif _state == 5 %}
             {% set _phase = "Monitoring" %}
-            {% if reading.environment_fault or _state == 8 %}
-              {% set _detail = "Score paused" %}
-            {% elif not reading.baseline_valid %}
+            {% if not reading.baseline_valid %}
               {% set _detail = "Waiting for baseline" %}
             {% elif not reading.measurement_usable %}
               {% set _detail = "Score not ready" %}
@@ -166,9 +173,6 @@
           {% elif _state == 2 %}
             {% set _phase = "Shelf empty" %}
             {% set _detail = "Waiting for baseline" if not reading.baseline_valid else "Score not ready" %}
-          {% elif reading.environment_fault or _state == 8 %}
-            {% set _phase = "Humidity fault" %}
-            {% set _detail = "Score paused" %}
           {% else %}
             {% set _phase = "Sensor unavailable" %}
             {% set _detail = "" %}

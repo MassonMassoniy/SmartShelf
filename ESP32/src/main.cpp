@@ -26,7 +26,7 @@ constexpr uint32_t SGP41_CONDITIONING_MS = 10UL * 1000UL;
 constexpr uint32_t STARTUP_STABILIZATION_MS = 5UL * 60UL * 1000UL;
 constexpr uint32_t INSERTION_CONFIRM_MS = 30UL * 1000UL;
 constexpr uint32_t REMOVAL_CONFIRM_MS = 60UL * 1000UL;
-constexpr uint32_t PRODUCT_SETTLING_MS = 5UL * 60UL * 1000UL;
+constexpr uint32_t PRODUCT_SETTLING_MS = 10UL * 60UL * 1000UL;
 constexpr uint32_t ENVIRONMENT_RECOVERY_MS = 5UL * 60UL * 1000UL;
 
 constexpr float ACCEPTABLE_TEMPERATURE_MIN_C = -10.0f;
@@ -96,7 +96,7 @@ enum class SmartShelfState : uint8_t {
     MONITORING = 5,
     VOC_WARNING = 6,  // Reserved: warning policy belongs to the Raspberry Pi.
     VOC_ALERT = 7,    // Reserved: alert policy/latching belongs to the Raspberry Pi.
-    ENVIRONMENT_FAULT = 8
+    ENVIRONMENT_FAULT = 8  // Legacy advertised state; high humidity now uses flag only.
 };
 
 // Little-endian packed layout: <BHBhHHhBBHHBH.
@@ -291,9 +291,8 @@ const char* stateName(SmartShelfState state) {
 }
 
 SmartShelfState advertisedState() {
-    if (environmentFault) {
-        return SmartShelfState::ENVIRONMENT_FAULT;
-    }
+    // High humidity sets FLAG_ENVIRONMENT_FAULT only. Keep advertising the
+    // real lifecycle state so VOC scoring and phase countdowns stay live.
     // While settle is in progress, surface settling to the dashboard even if
     // internal warm-up is still STABILIZING.
     if (settlingActive && !settlingCompleted &&
@@ -712,7 +711,7 @@ void publishBlePacket(const Measurement& measurement) {
         : -1;
     const bool scoreAvailable =
         measurement.acceptedVocSample && baselineValid && filteredSrawValid &&
-        lifecycleState == SmartShelfState::MONITORING && !environmentFault;
+        lifecycleState == SmartShelfState::MONITORING;
     payload.vocChangeScore = scoreAvailable ? vocChangeScore : 255;
     payload.state = static_cast<uint8_t>(advertisedState());
     payload.sequence = packetSequence++;
@@ -720,40 +719,38 @@ void publishBlePacket(const Measurement& measurement) {
     payload.concurrentState = 0;
     payload.concurrentRemainingSec = 0;
 
-    if (!environmentFault) {
-        markSettlingCompletedIfDue(now);
-        const bool settleRunning = settlingActive && !settlingCompleted;
-        const uint16_t settleRem = settlingRemainingSeconds(now);
-        switch (lifecycleState) {
-            case SmartShelfState::CONDITIONING:
-                payload.phaseRemainingSec =
-                    remainingSeconds(now, setupMs, SGP41_CONDITIONING_MS);
-                break;
-            case SmartShelfState::STABILIZING: {
-                const uint16_t stabilizeRem = remainingSeconds(
-                    now, stateStartedMs, STARTUP_STABILIZATION_MS);
-                if (settleRunning) {
-                    // Dashboard primary phase is settling while warm-up continues.
-                    payload.phaseRemainingSec = settleRem;
-                    payload.concurrentState =
-                        static_cast<uint8_t>(SmartShelfState::STABILIZING);
-                    payload.concurrentRemainingSec = stabilizeRem;
-                } else {
-                    payload.phaseRemainingSec = stabilizeRem;
-                }
-                break;
+    markSettlingCompletedIfDue(now);
+    const bool settleRunning = settlingActive && !settlingCompleted;
+    const uint16_t settleRem = settlingRemainingSeconds(now);
+    switch (lifecycleState) {
+        case SmartShelfState::CONDITIONING:
+            payload.phaseRemainingSec =
+                remainingSeconds(now, setupMs, SGP41_CONDITIONING_MS);
+            break;
+        case SmartShelfState::STABILIZING: {
+            const uint16_t stabilizeRem = remainingSeconds(
+                now, stateStartedMs, STARTUP_STABILIZATION_MS);
+            if (settleRunning) {
+                // Dashboard primary phase is settling while warm-up continues.
+                payload.phaseRemainingSec = settleRem;
+                payload.concurrentState =
+                    static_cast<uint8_t>(SmartShelfState::STABILIZING);
+                payload.concurrentRemainingSec = stabilizeRem;
+            } else {
+                payload.phaseRemainingSec = stabilizeRem;
             }
-            case SmartShelfState::PRODUCT_SETTLING:
-                payload.phaseRemainingSec = settleRunning
-                    ? settleRem
-                    : remainingSeconds(now, stateStartedMs, PRODUCT_SETTLING_MS);
-                break;
-            case SmartShelfState::BASELINING:
-                payload.phaseRemainingSec = baseliningRemainingSeconds();
-                break;
-            default:
-                break;
+            break;
         }
+        case SmartShelfState::PRODUCT_SETTLING:
+            payload.phaseRemainingSec = settleRunning
+                ? settleRem
+                : remainingSeconds(now, stateStartedMs, PRODUCT_SETTLING_MS);
+            break;
+        case SmartShelfState::BASELINING:
+            payload.phaseRemainingSec = baseliningRemainingSeconds();
+            break;
+        default:
+            break;
     }
 
     memcpy(blePacket + 2, &payload, sizeof(payload));
@@ -768,13 +765,15 @@ void publishBlePacket(const Measurement& measurement) {
 }
 
 void updateEnvironmentFault(const Measurement& measurement, uint32_t now) {
+    // High humidity is a warning flag only: VOC sampling, baseline, and score
+    // continue uninterrupted. Hysteresis clears the flag after sustained recovery.
     if (measurement.shtOk && measurement.humidityRh >= ENVIRONMENT_FAULT_RH) {
         recoveryTimerActive = false;
         if (!environmentFault) {
             environmentFault = true;
-            Serial.print(F("[ENV] FAULT: RH="));
+            Serial.print(F("[ENV] WARNING: high humidity RH="));
             Serial.print(measurement.humidityRh, 2);
-            Serial.println(F("%; VOC baseline/score inputs paused"));
+            Serial.println(F("%; measurements continue"));
         }
         return;
     }
@@ -789,9 +788,7 @@ void updateEnvironmentFault(const Measurement& measurement, uint32_t now) {
         } else if (elapsed(now, recoveryStartedMs, ENVIRONMENT_RECOVERY_MS)) {
             environmentFault = false;
             recoveryTimerActive = false;
-            filteredSrawValid = false;
-            clearSrawRing();
-            Serial.println(F("[ENV] RECOVERED after 5 continuous minutes below 87% RH"));
+            Serial.println(F("[ENV] High humidity warning cleared after 5 continuous minutes below 87% RH"));
         }
     } else {
         recoveryTimerActive = false;
@@ -943,7 +940,7 @@ void updateRelativeEvidence(const Measurement& measurement) {
     relativeVocLog2 = 0.0f;
     relativeVocRatio = 1.0f;
     if (!measurement.acceptedVocSample || !baselineValid || !filteredSrawValid ||
-        lifecycleState != SmartShelfState::MONITORING || environmentFault) {
+        lifecycleState != SmartShelfState::MONITORING) {
         return;
     }
     vocDeltaTicks =
@@ -979,10 +976,6 @@ void printDiagnostics(const Measurement& measurement, uint32_t now) {
     lastSerialMs = now;
     Serial.print(F("[STATUS] state="));
     Serial.print(stateName(advertisedState()));
-    if (environmentFault) {
-        Serial.print(F(" held="));
-        Serial.print(stateName(lifecycleState));
-    }
     Serial.print(F(" T/RH="));
     if (measurement.shtOk) {
         Serial.print(measurement.temperatureC, 2);
@@ -1101,10 +1094,9 @@ void readMeasurement(Measurement& measurement, uint32_t now) {
         measurement.shtOk &&
         measurement.temperatureC >= ACCEPTABLE_TEMPERATURE_MIN_C &&
         measurement.temperatureC <= ACCEPTABLE_TEMPERATURE_MAX_C &&
-        measurement.humidityRh >= ACCEPTABLE_HUMIDITY_MIN_RH &&
-        measurement.humidityRh < ENVIRONMENT_FAULT_RH;
+        measurement.humidityRh >= ACCEPTABLE_HUMIDITY_MIN_RH;
     measurement.acceptedVocSample =
-        measurement.sgpOk && environmentalRangeOk && !environmentFault &&
+        measurement.sgpOk && environmentalRangeOk &&
         lifecycleState != SmartShelfState::CONDITIONING;
 }
 

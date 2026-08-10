@@ -204,7 +204,6 @@ def decode_payload(payload: bytes) -> SensorPacket:
         autonomous
         and has_sgp
         and baseline_valid
-        and not environment_fault
         and voc_change_score is not None
         and autonomous_state == 5
     )
