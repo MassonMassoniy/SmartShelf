@@ -177,7 +177,7 @@ baseline valid, bit 4 environment fault, bit 5 6-sigma evidence, bit 6
 10-sigma evidence, and bit 7 reserved.
 
 Firmware defaults are 10 seconds conditioning, 5 minutes stabilization,
-30 seconds insertion confirmation, 60 seconds removal confirmation, 5 minutes
+30 seconds insertion confirmation, 60 seconds removal confirmation, 60 minutes
 headspace settling (may run concurrently with stabilization when a product is
 inserted during warm-up; proximity full/empty matches the dashboard at
 prox > 20 = full, prox ≤ 20 = empty),

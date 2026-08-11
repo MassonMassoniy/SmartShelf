@@ -26,7 +26,7 @@ constexpr uint32_t SGP41_CONDITIONING_MS = 10UL * 1000UL;
 constexpr uint32_t STARTUP_STABILIZATION_MS = 5UL * 60UL * 1000UL;
 constexpr uint32_t INSERTION_CONFIRM_MS = 30UL * 1000UL;
 constexpr uint32_t REMOVAL_CONFIRM_MS = 60UL * 1000UL;
-constexpr uint32_t PRODUCT_SETTLING_MS = 10UL * 60UL * 1000UL;
+constexpr uint32_t PRODUCT_SETTLING_MS = 60UL * 60UL * 1000UL;
 constexpr uint32_t ENVIRONMENT_RECOVERY_MS = 5UL * 60UL * 1000UL;
 
 constexpr float ACCEPTABLE_TEMPERATURE_MIN_C = -10.0f;
@@ -237,7 +237,7 @@ void startProductSettling(uint32_t now) {
     baselineMinuteCount = 0;
     filteredSrawValid = false;
     clearSrawRing();
-    Serial.println(F("[SETTLE] Product settling started (5 min)"));
+    Serial.println(F("[SETTLE] Product settling started (60 min)"));
 }
 
 void clearSettling() {
