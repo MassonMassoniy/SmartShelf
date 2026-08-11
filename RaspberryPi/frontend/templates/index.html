@@ -1835,6 +1835,12 @@
       return "Score live";
     }
 
+    function appendHumidityWarning(detail, environmentFault) {
+      if (!environmentFault) return detail;
+      if (!detail) return "High humidity";
+      return `${detail} · High humidity`;
+    }
+
     function isCellOccupied(node) {
       if (node.cell_status === "full") return true;
       if (node.cell_status === "empty" || node.cell_status === "unknown") return false;
@@ -1854,41 +1860,57 @@
       const concurrentRem = Number(node.concurrent_remaining_sec);
       const occupied = isCellOccupied(node);
 
-      if (environmentFault || state === 8) {
+      // Timed lifecycle phases keep their countdown. High humidity is an overlay
+      // note, not a replacement for warm-up / settle / baseline progress.
+      if (state === 4) {
         return {
-          phase: "Warning: High Humidity",
-          detail: describeScoreDetail(node, measurementUsable),
+          phase: "Baselining",
+          detail: appendHumidityWarning(countdownDetail(rem), environmentFault),
+        };
+      }
+      if (state === 3) {
+        let detail = countdownDetail(rem);
+        if (concurrent === 1 && Number.isFinite(concurrentRem) && concurrentRem > 0) {
+          detail = `${detail} · warm-up ${formatCountdown(concurrentRem)}`;
+        }
+        return {
+          phase: "Product settling",
+          detail: appendHumidityWarning(detail, environmentFault),
+        };
+      }
+      if (occupied && state === 2) {
+        return {
+          phase: "Detecting product…",
+          detail: appendHumidityWarning("Confirming presence", environmentFault),
+        };
+      }
+      if (state === 0 || state === 1) {
+        return {
+          phase: "Warming up",
+          detail: appendHumidityWarning(countdownDetail(rem), environmentFault),
         };
       }
       if (state === 5) {
+        if (environmentFault) {
+          return {
+            phase: "Warning: High Humidity",
+            detail: describeScoreDetail(node, measurementUsable),
+          };
+        }
         return {
           phase: "Monitoring",
           detail: describeScoreDetail(node, measurementUsable),
         };
       }
-      if (state === 4) {
-        return { phase: "Baselining", detail: countdownDetail(rem) };
-      }
-      if (state === 3) {
-        // Optional warm-up still running in the background (concurrent state 1).
-        const detail = countdownDetail(rem);
-        if (concurrent === 1 && Number.isFinite(concurrentRem) && concurrentRem > 0) {
-          return {
-            phase: "Product settling",
-            detail: `${detail} · warm-up ${formatCountdown(concurrentRem)}`,
-          };
-        }
-        return { phase: "Product settling", detail };
-      }
-      if (occupied && state === 2) {
-        return { phase: "Detecting product…", detail: "Confirming presence" };
-      }
-      if (state === 0 || state === 1) {
-        return { phase: "Warming up", detail: countdownDetail(rem) };
-      }
       if (state === 2) {
         return {
-          phase: "Shelf empty",
+          phase: environmentFault ? "Warning: High Humidity" : "Shelf empty",
+          detail: describeScoreDetail(node, measurementUsable),
+        };
+      }
+      if (environmentFault || state === 8) {
+        return {
+          phase: "Warning: High Humidity",
           detail: describeScoreDetail(node, measurementUsable),
         };
       }
@@ -1955,7 +1977,8 @@
       setTextIfChanged(indexEl, vocIndex == null ? "--" : String(vocIndex));
       const environmentFault = Boolean(node.environment_fault) || Number(node.autonomous_state) === 8;
       const measurementUsable = Boolean(node.measurement_usable);
-      const score = !measurementUsable || node.voc_change_score == null ? null : Number(node.voc_change_score);
+      // Show whatever score the node publishes; do not hide it behind usable/latch.
+      const score = node.voc_change_score == null ? null : Number(node.voc_change_score);
       const scoreAvailable = score != null && Number.isFinite(score);
       setTextIfChanged(valueEl, scoreAvailable ? String(score) : "--");
 

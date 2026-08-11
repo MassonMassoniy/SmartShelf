@@ -910,13 +910,13 @@ void updateFilteringAndBaseline(const Measurement& measurement, uint32_t now) {
     }
 
     appendSraw(measurement.srawVoc);
-    if (srawRing.count < SRAW_RING_SIZE) {
-        return;
-    }
-    filteredSrawVoc = ringMedian();
-    filteredSrawValid = true;
-
     if (lifecycleState == SmartShelfState::BASELINING) {
+        // Baselining still requires full non-overlapping 60-sample minutes.
+        if (srawRing.count < SRAW_RING_SIZE) {
+            return;
+        }
+        filteredSrawVoc = ringMedian();
+        filteredSrawValid = true;
         baselineMinuteMedians[baselineMinuteCount++] = filteredSrawVoc;
         Serial.print(F("[BASELINE] Minute median "));
         Serial.print(baselineMinuteCount);
@@ -929,7 +929,13 @@ void updateFilteringAndBaseline(const Measurement& measurement, uint32_t now) {
         if (baselineMinuteCount == BASELINE_MINUTE_SAMPLES) {
             completeBaseline(now);
         }
+        return;
     }
+
+    // MONITORING: publish a live median from whatever samples are available so
+    // a restored baseline can show VOC change immediately after warm-up.
+    filteredSrawVoc = ringMedian();
+    filteredSrawValid = true;
 }
 
 void updateRelativeEvidence(const Measurement& measurement) {
