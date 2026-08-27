@@ -68,7 +68,7 @@ def print_status(
         pkt = state.packet
         status = "ONLINE" if is_online else "STALE "
         quality = (
-            "FAULT"
+            "WARN"
             if pkt.environment_fault
             else "USABLE"
             if pkt.measurement_usable
