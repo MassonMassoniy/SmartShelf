@@ -1,1 +1,72 @@
-readme.
+# SmartShelf
+
+SmartShelf — Real-Time Food Spoilage Detection using ESP32 sensors and a Raspberry Pi backend.
+
+Table of Contents
+- [Visuals](#visuals)
+- [Getting Started](#getting-started)
+- [Usage](#usage)
+- [License](#license)
+
+Visuals
+---
+Logo / screenshot (replace with actual image in the repo):
+![Dashboard](<images/SmartShelf Dashboard_2026827172626.png>)
+
+Getting Started
+---
+Prerequisites
+- Python 3.8+ for the backend
+- PlatformIO (VS Code) or Arduino IDE for the ESP32
+
+Quick setup (Raspberry Pi backend)
+
+Linux / Raspberry Pi:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+Windows (development):
+
+```powershell
+python -m venv .env
+.\.env\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+ESP32 (firmware)
+
+```bash
+# from the ESP32 directory
+pio run
+pio run -t upload
+```
+
+Usage
+---
+Start the backend (example):
+
+```bash
+python RaspberryPi/run.py
+```
+
+Example API call (adjust port and routes as implemented):
+
+```bash
+curl http://localhost:5000/api/health
+```
+
+ESP32: use the serial monitor to view device logs:
+
+```bash
+pio device monitor
+```
+
+License
+---
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file at the repository root for the full terms.
+
+If a `LICENSE` file is not present, create one and add the desired license text (for example, the MIT license). For reference, see: https://opensource.org/licenses/MIT
