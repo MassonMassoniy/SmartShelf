@@ -1,6 +1,6 @@
 # SmartShelf
 
-SmartShelf — Real-Time Food Spoilage Detection using ESP32 sensors and a Raspberry Pi backend.
+SmartShelf monitors food freshness in real time. ESP32 sensor nodes measure conditions around stored items (temperature, humidity, proximity, and VOC/gas) and broadcast the readings over BLE. A Raspberry Pi backend collects those packets, stores and aggregates the data, and serves a live API and dashboard so you can spot spoilage risk early.
 
 Table of Contents
 - [Visuals](#visuals)
