@@ -10,7 +10,6 @@ Table of Contents
 
 Visuals
 ---
-Logo / screenshot (replace with actual image in the repo):
 ![Dashboard](<images/SmartShelf Dashboard_2026827172626.png>)
 
 Getting Started
@@ -68,5 +67,3 @@ pio device monitor
 License
 ---
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file at the repository root for the full terms.
-
-If a `LICENSE` file is not present, create one and add the desired license text (for example, the MIT license). For reference, see: https://opensource.org/licenses/MIT
